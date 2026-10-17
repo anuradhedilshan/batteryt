@@ -1,0 +1,1087 @@
+MATHEMATICAL MODEL • BATTERY SIZING
+
+TECHNICAL RESEARCH REPORT
+
+Mathematical Model for
+Residential PV–Battery Sizing
+Hourly techno-economic optimisation with verified energy accounting,
+power limits, SOC constraints and Australian incentive treatment
+
+Proposed modelling process: from household/PV energy balance to capacity selection.
+
+DOCUMENT BASIS
+
+REPORT STATUS
+
+Input thesis
+
+Thesis Report A new (1)(1).docx (user-supplied
+project draft)
+
+Draft reviewed
+
+Battery Sizing Formula Flowchart Updated (9 pages)
+
+Report type
+
+Corrected mathematical specification and illustrative
+verification
+
+Prepared
+
+4 October 2026
+
+Evidence warning
+
+Original 8,760-hour CSV data files were not supplied.
+Illustrative plots are NOT measured thesis battery
+results.
+
+RESEARCH INTEGRITY The proposed model and illustrative reconstruction must not be described as an
+experimentally validated optimum. Reported thesis aggregates are identified separately from illustrative
+figures throughout.
+
+Research methodology refinement |
+
+1
+
+MATHEMATICAL MODEL • BATTERY SIZING
+
+Executive summary
+The objective is to refine the hourly battery-sizing procedure described in the uploaded thesis and the
+follow-up formula flowchart. The thesis develops Australian residential load profiles and an hourly PVgeneration method but primarily reports the no-battery energy mismatch. Its Section 6.17 reports annual
+solar generation of 10,539 kWh, household demand of 5,780 kWh, direct solar use of 2,668 kWh, PV
+surplus of 7,871 kWh and grid imports of 3,112 kWh [1]. These aggregate results are internally energyconsistent, but do not uniquely determine an optimal battery capacity.
+The corrected formulation uses separate electrical energy and state-of-charge variables, usable-energy
+limits, maximum charge/discharge power, energy conservation at the AC bus, a zero-kWh baseline, cyclicstate handling, explicit tariffs and a discounted ownership cost. The principal objective selects the
+candidate capacity minimising annual equivalent total cost or, equivalently under the same assumptions,
+maximising net benefit against the PV-only baseline. A policy-aware subsidy function replaces an
+automatic rebate, and tariff-aware dispatch is distinguished from the baseline greedy strategy [2], [4]–[9].
+A controlled, reproducible 8,760-hour illustrative reconstruction is provided only to check model
+behaviour and demonstrate the graphs. It is calibrated to the FIVE annual aggregate values in the
+uploaded thesis; this calibration does not recreate the unavailable measured/synthetic time sequence. The
+illustrative economic assumptions, not thesis-supplied prices, produce a minimum at 0 kWh, a valid result
+illustrating the possibility that battery ownership is uneconomic under a particular scenario.
+MAIN REVISION
+
+PRACTICAL CONSEQUENCE
+
+Power-constrained charging and discharging
+
+Prevents impossible kWh transfer within one hour
+
+Cyclic SOC and zero-battery handling
+
+Prevents free initial energy and division by zero
+
+Net-benefit vs. no-battery baseline
+
+Explicitly values avoided imports less lost FiT
+
+Discounted cost and separate subsidy eligibility
+
+Reflects financial lifetime and evolving policy rules
+
+Independent consistency tests
+
+Provides reproducible verification criteria
+
+1. Research basis, provenance and scope
+1.1 Findings directly supported by the thesis
+The study models a 6.6 kW rooftop PV system using hourly solar irradiance (8,760 observations) with an
+assumed performance ratio of 0.80. It derives occupancy-based small, medium and large demand profiles
+with seasonal, weekday/weekend and stochastic features. The reported annual demand/solar comparison
+in Section 6.17 is a no-battery result for one modelled household profile [1].
+Observed or reported quantity
+
+Value
+
+Status
+
+PV rated capacity
+
+6.6 kW
+
+Thesis assumption
+
+Annual irradiance
+
+1,996 kWh/m²/year
+
+Thesis model output
+
+PV generation
+
+10,539 kWh/year
+
+Thesis result
+
+Household load
+
+5,780 kWh/year
+
+Thesis result
+
+Direct PV to load
+
+2,668 kWh/year
+
+Thesis result
+
+Surplus PV
+
+7,871 kWh/year
+
+Thesis result
+
+Grid import, no battery
+
+3,112 kWh/year
+
+Thesis result
+
+Research methodology refinement |
+
+2
+
+MATHEMATICAL MODEL • BATTERY SIZING
+
+Fig. 1. Thesis-reported no-battery annual energy partition (original results, not reconstructed).
+
+Annual conservation checks: 10,539 = 2,668 + 7,871 and 5,780 = 2,668 + 3,112 kWh. These identities check
+the aggregate accounting, not the hourly optimisation. Importantly, 46.2% is solar coverage of demand
+(2,668/5,780), whereas the PV self-consumption fraction is only 25.3% (2,668/10,539) under the battery-free
+model [1], [6].
+
+1.2 Boundaries of this report
+The model concerns an AC-equivalent grid-connected household PV–battery system with PV-only battery
+charging. Load and PV are interpreted as energy delivered at a common AC boundary after appropriate
+inverter/performance losses. Hardware thermal response, short-duration inrush, backup/islanding,
+degradation, demand charges, PV curtailment under negative FiT, advanced arbitrage and network
+export restrictions are not claimed as already validated by the thesis [1]. Extensions are discussed where
+relevant.
+
+2. Technical audit of the draft
+The nine-page updated flowchart correctly separates stored energy B(t) in kWh from SOC in percent and
+improves the battery efficiency accounting in the thesis, but additional conditions are needed before its
+capacity decision can be considered physically and financially complete [2].
+ISSUE
+
+WHY IT MATTERS
+
+CORRECTION
+
+SOC initial/final condition
+
+Unspecified starting/ending battery
+energy biases annual savings
+
+Cycle annual series to a stable
+initial/terminal state; define B0.
+
+Power rating
+
+kWh-only constraints allow unrealistic
+one-hour transfers
+
+Constrain each transfer by Pmax × Δt.
+
+0 kWh case
+
+SOC=B/Eb becomes undefined
+
+Bypass storage update and set all storage
+flows to zero.
+
+PV output basis
+
+GHI × constant PR approximates tilted PV
+
+Record AC boundary and validate yield
+against radiation assumptions.
+
+Grid balance/curtailment
+
+Grid import/export rules assume
+nonnegative tariffs
+
+Add optional curtailment; verify full AC
+bus balance.
+
+Annualised capital cost
+
+Cost/life ignores discounting, O&M,
+replacements
+
+Use CRF for a simple life or full NPV over
+multiple years.
+
+Tariff-aware dispatch
+
+Greedy immediate discharge not globally
+optimal under TOU
+
+Label rule-based benchmark; solve
+scheduling separately for TOU.
+
+Subsidy eligibility
+
+Draft implies subsidy for all E_b
+
+Use function of usable capacity, installed
+date and policy criteria.
+
+Selection set
+
+20 kWh extends initial 0–15 kWh thesis
+range
+
+State extension explicitly and refine
+candidate grid.
+
+Metrics in thesis
+
+Self-consumption and payback wording
+inverted
+
+Repair denominator definitions and
+payback orientation.
+
+Research methodology refinement |
+
+3
+
+MATHEMATICAL MODEL • BATTERY SIZING
+
+3. Notation and baseline assumptions
+Symbol / term
+
+Definition
+
+Units
+
+t, Δt
+
+Hourly index t = 1 … 8760; interval
+duration
+
+h
+
+P_PV, g_t
+
+Rated PV capacity, specific hourly PV
+yield
+
+kW, kWh/kW
+
+E_PV,t, E_L,t
+
+AC-equivalent PV generation and
+household consumption
+
+kWh
+
+S_t, D_t
+
+Pre-storage surplus and residual load
+deficit
+
+kWh
+
+E_b
+
+Candidate nominal battery capacity
+
+kWh
+
+B_t
+
+Stored energy at end of time step
+
+kWh
+
+α_min, α_max
+
+SOC bounds on fractional scale (0–1)
+
+dimensionless
+
+η_c, η_d
+
+Charging and discharging efficiencies
+
+dimensionless
+
+P_c,max, P_d,max
+
+Charge/discharge power ratings
+
+kW
+
+E_c,t, E_d,t
+
+Battery charging input and discharged
+AC energy
+
+kWh
+
+E_i,t, E_x,t
+
+Grid import and export
+
+kWh
+
+T_i,t, T_FIT,t
+
+Retail import / export credit tariff
+
+AUD/kWh
+
+C_0(E_b), S_gov(E_b)
+
+Installed cost and applicable government
+discount
+
+AUD
+
+r, L
+
+Annual discount rate, economic lifetime
+
+per year, years
+
+SIGN CONVENTION All E quantities represent energy (kWh) within one time step. Charging energy is
+measured before charging loss and discharging energy is delivered to the AC load after discharging loss. SOC
+equations use B/E_b and are never applied to the 0-kWh baseline.
+
+4. Complete proposed mathematical function
+4.1 PV generation and temporal mismatch
+E_PV,t = P_PV × g_t ;
+
+g_t = (G_POA,t / G_STC) × PR_t × Δt (1)
+
+The thesis retains 6.6 kW and PR = 0.80 for its baseline. G_POA refers to plane-of-array irradiance,
+whereas using the available global horizontal irradiance (GHI) without transposition is a documented
+approximation. Actual PV output should also respect AC inverter export/generation limits when
+independently known [1], [10].
+S_t = max(0, E_PV,t − E_L,t) ;
+
+D_t = max(0, E_L,t − E_PV,t) (2)
+
+For each hour, PV directly supplies the contemporaneous load before the battery acts. Thus only S_t can
+charge storage under PV-only charging, and only D_t can be replaced by battery discharge. Positive S_t
+and D_t cannot occur simultaneously.
+
+4.2 Corrected battery limits and state transition
+E_c,t = min{ S_t, P_c,max Δt, (α_max E_b − B_(t−1)) / η_c } (3)
+E_d,t = min{ D_t, P_d,max Δt, η_d [B_(t−1) − α_min E_b] } (4)
+B_t = B_(t−1) + η_c E_c,t − E_d,t / η_d (5)
+α_min E_b ≤ B_t ≤ α_max E_b ; SOC_t(%) = 100 B_t / E_b (E_b > 0) (6)
+For the illustrated numerical experiments only, α_min = 0.10, α_max = 0.95, η_c = η_d = 0.95 and a 0.5 Crate are assumed, i.e., P_c,max = P_d,max = 0.5E_b kW. These are transparent study assumptions, not
+claims that all marketed batteries have identical power ratings. Hardware-specific AC power ratings,
+inverter constraints and efficiencies should replace them when known [9].
+
+Research methodology refinement |
+
+4
+
+MATHEMATICAL MODEL • BATTERY SIZING
+
+At E_b = 0, define E_c,t = E_d,t = B_t = 0 without calculating SOC. For E_b > 0, simulate the 8,760-hour series
+to a repeatable cyclic state such that B_8760 ≈ B_0, or impose a suitable terminal energy constraint. This
+avoids giving an artificial benefit to an initially full battery.
+
+4.3 Grid exchange and energy conservation
+E_i,t = D_t − E_d,t ; E_x,t = S_t − E_c,t − E_curt,t (7)
+E_PV,t + E_i,t + E_d,t = E_L,t + E_c,t + E_x,t + E_curt,t (8)
+In the nonnegative-FiT baseline, curtailment E_curt,t is fixed at zero. If exporting is disallowed, capped or
+charged a negative price, a curtailment control variable may be enabled, with 0 ≤ E_curt,t ≤ S_t − E_c,t
+and separate export-cap constraints. Equation (8) must equal zero residual in every simulated hour.
+
+4.4 Annual grid cost and ownership cost
+C_grid(E_b) = Σ(t=1…8760)[ T_i,t E_i,t − T_FIT,t E_x,t ] (9)
+C_net(E_b) = C_0(E_b) − S_gov(E_b) (10)
+CRF(r,L) = r(1+r)^L / [(1+r)^L − 1] ;
+
+CRF(0,L) = 1/L (11)
+
+AEC(E_b) = CRF(r,L) C_net(E_b) + C_O&M(E_b) (12)
+AEC is an equivalent annual ownership cost. The gross installed cost must include the whole installed
+battery and any incremental inverter/electrical work, not just cell cost. Fixed household supply charges
+cancel in battery-versus-no-battery comparisons only when tariff schedules do not change with capacity.
+Full NPV with replacements, salvage and degradation is recommended for long-term investment analyses.
+
+4.5 Optimisation objective and equivalent benefit form
+E_b* = arg min(E_b ∈ ℬ) { C_grid(E_b) + AEC(E_b) } (13)
+The candidate set ℬ must include 0 kWh and physically marketable storage capacities. ℬ can initially be
+{0, 5, 10, 13.5, 15} kWh to match the thesis and later be refined, but results can only be called the best of
+the tested capacities unless a sufficiently broad/continuous optimisation has been demonstrated.
+NB(E_b) = C_grid(0) − [C_grid(E_b) + AEC(E_b)] (14)
+NB(E_b) = Σ[T_i,t E_d,t − T_FIT,t E_c,t] − AEC(E_b) (15)
+Equation (15) follows from Eq. (7) when curtailment is zero and there is no grid charging. Therefore E_b*
+= arg max NB(E_b). The difference between baseline grid imports and battery-case imports equals
+discharge; lost PV exports equal charging. When grid charging or curtailment is allowed, Eq. (14) remains
+general, but Eq. (15) needs additional terms. A battery may be economically rejected when 0 kWh yields
+the largest net benefit [4], [5].
+FINAL RECOMMENDED FUNCTION For the present thesis scope, present Eqs. (1)–(15) as the proposed
+hourly simulation-based sizing model, with Eq. (13) the formal cost-minimisation decision and Eq. (15) the
+interpretable net-benefit equivalent under specified dispatch assumptions.
+
+5. Tariff dispatch and Australian incentives
+5.1 Why a price-aware extension matters
+The charge/discharge min rules in Eqs. (3) and (4) intentionally reproduce the thesis priority logic: direct
+PV use, excess PV to battery, residual PV to grid, then deficit supplied by battery and grid. This greedy rule
+is suitable as a transparent baseline, but is not necessarily optimal under varying import tariffs because
+
+Research methodology refinement |
+
+5
+
+MATHEMATICAL MODEL • BATTERY SIZING
+
+energy might be more valuable at a later evening peak. It should not be described as globally optimal
+dispatch merely because the outer loop chooses the cheapest capacity [5], [9], [11].
+A TOU-aware extension treats E_c,t, E_d,t, B_t, E_i,t and E_x,t as decision variables and, for each E_b,
+minimises Σ[T_i,t E_i,t − T_FIT,t E_x,t] over the horizon, subject to the SOC, power, energy balance and
+permitted grid/PV source restrictions. Enforce E_c,t ≤ S_t when PV-only charging is intended, and impose
+non-simultaneous charging/discharging where needed. The economic sizing model then compares
+optimally dispatched capacities with the same financial objective. TOU results must be explicitly
+separated from the original rule-based thesis baseline.
+
+5.2 Modelling the 2026 subsidy without invented amounts
+The Australian Government Cheaper Home Batteries Program now provides a discount for eligible smallscale batteries. From 1 May 2026, the incentive is based on eligible usable battery capacity, the
+installation-date STC factor and tiered capacity treatment; the posted factor for May–December 2026 is
+6.8, with 100% of the factor on the first 14 kWh of usable capacity, 60% for the next 14 kWh and 15%
+above 28 to 50 kWh [7], [8]. Eligible batteries have additional nominal-capacity, product, installer and
+other requirements. Eligibility cannot be assumed from nominal E_b alone.
+u(E_u) = min(E_u,14) + 0.60·min(max(E_u−14,0),14) + 0.15·min(max(E_u−28,0),22) (16)
+For a hypothetical eligible installation in May–December 2026, an indicative certificate-weighted
+expression is STC_raw = 6.8 × u(E_u), where E_u is the policy-defined eligible usable capacity. Actual
+certificates, rounding, pricing, deeming and eligibility must be determined using the current
+regulator/REC Registry calculator and installer quote. Do NOT treat STC_raw × an invented dollar value as
+a verified rebate [7], [8].
+S_gov(E_b) = { verified quote discount(E_u,date,eligibility), if eligible; 0 otherwise } (17)
+This formulation allows the current 2026 program to be incorporated without silently equating 30% of the
+nominal battery price with the legislated calculation. The simulation figures below use a separate, plainly
+hypothetical flat 30% cost reduction solely to illustrate a financial sensitivity, not an Australian policy
+quote.
+
+Research methodology refinement |
+
+6
+
+MATHEMATICAL MODEL • BATTERY SIZING
+
+6. Validation protocol and worked example
+6.1 Hourly implementation algorithm
+STEP
+
+PROCEDURE
+
+EXPECTED ACTION
+
+1
+
+Set scenario inputs
+
+Select household load and 6.6 kW PV
+profile; define all financial and
+equipment assumptions.
+
+2
+
+Run 0-kWh baseline
+
+Compute direct use, PV export, grid
+import and baseline grid bill without
+SOC.
+
+3
+
+Choose candidate E_b
+
+Set battery SOC bounds, efficiencies,
+charge/discharge power limits and initial
+condition.
+
+4
+
+Find cyclic SOC
+
+Repeat the identical annual sequence or
+solve a cycle-boundary condition to
+eliminate free starting energy.
+
+5
+
+Simulate each hour
+
+Compute PV surplus/deficit, enforce
+charge/discharge constraints, update B_t.
+
+6
+
+Check equations
+
+Track physical energy-balance residual,
+SOC limits and Pmax constraints.
+
+7
+
+Compute economics
+
+Evaluate grid bill, verified subsidy when
+applicable, discounted annual cost and
+net benefit.
+
+8
+
+Select and test
+
+Rank sizes, refine grid near minimum
+and stress-test tariffs, occupancy, solar
+year and ageing.
+
+6.2 Single-hour illustrative arithmetic
+Consider a hypothetical 10 kWh battery with initial stored energy B(t−1) = 4.00 kWh, η_c = η_d = 0.95, SOC
+bounds 10–95% and Pmax = 5 kW. In the first hour, PV = 5.0 kWh and load = 1.5 kWh, yielding S_t = 3.5
+kWh. By Eq. (3), E_c,t = min(3.5, 5, (9.5 − 4)/0.95) = 3.5 kWh. Thus B_t = 4 + 0.95(3.5) = 7.325 kWh and SOC =
+73.25%; export = 0. In the next hour, with PV = 0 and load = 4.0 kWh, discharge = min(4, 5, (7.325 − 1)×0.95)
+= 4.0 kWh. B_t = 7.325 − 4/0.95 = 3.114 kWh, SOC ≈ 31.14%, and import = 0. All figures are hypothetical
+checks of the equations, not thesis observations.
+
+6.3 Verification rules
+CHECK
+
+TEST
+
+RESULT IN ILLUSTRATION
+
+Annual no-battery balance
+
+PV = direct PV + exports; load = direct PV
++ imports
+
+PASS: 10,539 and 5,780 kWh
+
+Every-hour bus balance
+
+PV + import + discharge = load + charge +
+export + curtail
+
+PASS: residual below 10⁻⁸ kWh
+
+SOC safety
+
+α_min E_b ≤ B_t ≤ α_max E_b
+
+PASS: all tested capacities
+
+Power rating
+
+E_c,t,E_d,t ≤ Pmax × 1 h
+
+PASS: all tested capacities
+
+Zero PV stress
+
+No sun should not generate battery
+energy
+
+PASS
+
+Zero-capacity baseline
+
+No division by zero; no battery flows
+
+PASS
+
+Cyclic-boundary condition
+
+No unaccounted opening/closing battery
+energy
+
+PASS within 10⁻⁶ kWh
+
+Objective equivalence
+
+Baseline difference = avoided imports −
+lost FiT − ownership
+
+PASS < 10⁻⁷ AUD
+
+The checks were executed against the illustrative reconstructed input series described next. Passing these
+checks validates internal implementation consistency only. It does not validate the empirical accuracy of
+missing original hourly profiles or market quotes.
+
+Research methodology refinement |
+
+7
+
+MATHEMATICAL MODEL • BATTERY SIZING
+
+7. Illustrative numerical experiment and graphs
+7.1 Evidence separation and construction
+The original 8,760-hour source arrays are not attached to the thesis file. Therefore a deterministic,
+illustrative 8,760-hour PV and demand sequence was constructed with Australian-like summer/winter PV
+variation, morning/evening demand peaks, weekend variation and fixed random seed 42. The proxy was
+rescaled and its daytime load shape adjusted to exactly reproduce the thesis annual PV generation
+(10,539), load (5,780), directly consumed PV (2,668), surplus (7,871) and grid import (3,112) kWh. Matching
+these aggregate constraints DOES NOT mean the reconstructed sequence is the thesis sequence; an
+unbounded number of differently timed sequences have identical totals but different battery optima.
+For illustration only, a flat retail tariff of AUD 0.35/kWh, FiT of AUD 0.05/kWh, discount rate 6%, economic
+life 10 years, installed cost of AUD 1,000 fixed plus AUD 700/kWh, annual O&M of 1% of gross installed
+cost and hypothetical 30% capital discount are assumed. PV-only charging, η_c = η_d = 0.95, SOC 10–95%,
+0.5 C-rate and annual cyclic-state enforcement are applied. NONE of these illustrative financial values is
+represented as a measured thesis result, retailer quote or verified program rebate.
+ILLUSTRATIVE INPUT
+
+VALUE
+
+EVIDENCE CLASS
+
+8760 hours; annual PV/load/overlap
+
+10,539 / 5,780 / 2,668 kWh
+
+Aggregate-calibrated to thesis
+
+Charge/discharge efficiency
+
+0.95 / 0.95
+
+Assumption
+
+SOC / power
+
+10–95% / 0.5 C-rate
+
+Assumption
+
+Tariff / feed-in credit
+
+AUD 0.35 / 0.05 per kWh
+
+Hypothetical tariff
+
+Gross battery capex
+
+AUD 1,000 + AUD 700/kWh
+
+Hypothetical cost
+
+Subsidy for demonstration
+
+30% of gross capex
+
+Hypothetical, not actual STC
+
+Interest / lifetime / annual O&M
+
+6% / 10 years / 1% gross
+
+Assumption
+
+Fig. 2. Daily surplus and deficit by month in the reconstructed 8,760-hour illustration; NOT original thesis hourly results.
+
+Research methodology refinement |
+
+8
+
+MATHEMATICAL MODEL • BATTERY SIZING
+
+Fig. 3. One illustrative summer day: PV, load, charge/discharge using a 10 kWh battery; NOT measured data.
+
+7.2 Capacity optimisation under example costs
+Capacity (kWh)
+
+Grid imports
+(kWh)
+
+Grid exports
+(kWh)
+
+Grid cost
+(AUD/yr)
+
+Total annual cost
+(AUD/yr)
+
+Net benefit
+(AUD/yr)
+
+0
+
+3,112
+
+7,871
+
+696
+
+696
+
++0
+
+5
+
+1,638
+
+6,238
+
+262
+
+734
+
+-39
+
+7.5
+
+923
+
+5,446
+
+51
+
+708
+
+-12
+
+10
+
+433
+
+4,903
+
+-94
+
+747
+
+-52
+
+13.5
+
+143
+
+4,582
+
+-179
+
+919
+
+-224
+
+15
+
+138
+
+4,576
+
+-181
+
+1,028
+
+-333
+
+20
+
+134
+
+4,571
+
+-182
+
+1,395
+
+-699
+
+Fig. 4. Illustrative net annual financial benefit versus battery capacity. The chosen minimum-cost point is 0 kWh under the stated
+prices; this is NOT the optimal size from the original thesis dataset.
+
+In this example, the annual PV-only grid bill is AUD 695.65. A 7.5 kWh battery saves imported electricity
+and increases self-consumption, yet costs around AUD 12.07/year more than the PV-only case once
+ownership costs are annualised. Consequently 0 kWh is selected from the illustrated candidate grid. This
+result is scenario-specific and must not be generalised to actual Australian households or treated as a
+finding of the uploaded thesis.
+
+Research methodology refinement |
+
+9
+
+MATHEMATICAL MODEL • BATTERY SIZING
+
+7.3 Sensitivity to tariff assumptions
+
+Fig. 5. Selected battery capacity (kWh) for different hypothetical import tariffs and FiTs, holding other illustrative parameters
+fixed; NOT empirically estimated tariff predictions.
+
+The illustration demonstrates why no standalone constant capacity such as “10 kWh for all 6.6 kW
+systems” is justified. Even when aggregate PV and load totals are held fixed, relative import/FIT values
+can change the economic minimum. A positive selected size at some tariff points should be interpreted as
+the best capacity for the assumed proxy hourly series, not necessarily for the thesis’s original profile.
+
+8. Interpretation, screening rules and robustness
+8.1 Marginal economic value and feasibility
+η_RT = η_c η_d ;
+
+storing 1 kWh PV is useful when η_RT T_import,later > T_FIT,now (18)
+
+This marginal rule screens the operating value of shifting surplus PV to a later deficit in the absence of
+capacity/power restrictions; with 0.95 charge and discharge efficiency, η_RT = 0.9025. It is not a sufficient
+investment decision rule because installed cost, lifetime, utilisation and changing tariffs must also be
+included. A load deficit beyond 3,112 kWh/year avoided imports is impossible under the baseline annual
+demand partition and PV-only charging constraints; actual reductions are smaller owing to energy losses
+and timing limitations.
+
+8.2 Required sensitivity experiments on the actual thesis data
+FACTOR
+
+SUGGESTED STUDY GRID
+
+WHY
+
+Household occupancy
+
+Small / medium / large
+
+Tests occupancy dependency already in
+thesis
+
+PV size
+
+4 / 6.6 / 8 / 10 kW
+
+Tests PV capacity effect
+
+Battery size
+
+0–20 kWh plus fine grid near minimum
+
+Avoids candidate-grid artefacts
+
+Charge/discharge powers
+
+0.25 / 0.5 / 1 C and manufacturer ratings
+
+Avoids unreal transfer rates
+
+Efficiency
+
+90–98% per direction, sourced ranges
+
+Captures loss sensitivity
+
+Tariffs
+
+Actual retailer schedule + alternative
+TOU
+
+Separates price and dispatch effects
+
+FiT
+
+Current applicable provider plan(s)
+
+Captures opportunity cost
+
+Installed cost & subsidy
+
+Actual quotes and policy-verified STCs
+
+Avoids unsupported assumptions
+
+Data sensitivity
+
+Multiple random seeds + measured solar
+years
+
+Shows robustness of synthetic data
+results
+
+Lifetime & degradation
+
+Nominal, high/low lifetime, replacement
+year
+
+Shows investment uncertainty
+
+Research methodology refinement |
+
+10
+
+MATHEMATICAL MODEL • BATTERY SIZING
+
+A useful uncertainty summary would report the fraction of synthetic data realisations selecting each
+capacity, the cost penalty of rounding to commercial battery sizes, and the difference between rule-based
+dispatch and tariff-aware dispatch where applicable. This should be discussed as model robustness rather
+than experimental certainty.
+
+9. Specific changes recommended for the existing thesis
+• Replace the unscaled SOC recurrence in Section 2.12 and Section 3.8.7 with stored-energy Eq. (5) and
+percentage Eq. (6). The current prose mixes kWh with a quantity named SOC.
+• Correct Section 3.8.11: 25.3% is baseline PV self-consumption, while 46.2% is the fraction of household
+demand directly covered by PV. Give distinct formulas and symbols.
+• Correct simple payback to net initial investment divided by positive annual bill savings less
+incremental annual O&M. Do not invert it or double-count annualised battery capex.
+• Update Section 3.8.9 with CRF/NPV, eligibility-aware STC functions and clear AUD units. If policy
+changes are not a formal original objective, label them an extension.
+• Revise the Results and Conclusion to separate demonstrated annual solar-load mismatch from
+future/proposed battery optimisation. Do not describe an uncomputed optimum as demonstrated.
+• Include hourly validation plots for minimum/maximum SOC, battery rated power, cyclic start/end SOC,
+grid imports and exports alongside financial sensitivity plots.
+• Use measured/actual hourly CSV input datasets in the final experiments; record weather location/year,
+data provenance, installation date, tariff plan, quote date and random seed.
+
+Research methodology refinement |
+
+11
+
+MATHEMATICAL MODEL • BATTERY SIZING
+
+Appendix A. Reproducible model pseudocode
+FOR each E_b in candidate capacities including E_b = 0:
+IF E_b == 0:
+E_charge = E_discharge = 0; do not calculate SOC
+ELSE:
+set nominal capacity, SOC bounds, eta_c/d and kW limits
+cycle the same annual input until start/end B converge
+FOR each hour t=1...8760:
+PV = P_PV*g[t]; surplus=max(PV-load[t],0)
+deficit=max(load[t]-PV,0)
+if surplus>0: charge = min(surplus,Pch*dt,room/eta_c)
+else:
+
+discharge = min(deficit,Pdis*dt,
+available*eta_d)
+
+B = B + eta_c*charge - discharge/eta_d
+import = deficit-discharge
+export = surplus-charge-curtailment
+assert energy balance, SOC and power limits
+C_grid = sum(import*T_import - export*T_FIT)
+C_installed = full equipment + installation cost
+C_net = C_installed - eligible_policy_discount
+annual_ownership = CRF*C_net + annual_OandM
+total_cost[E_b] = C_grid + annual_ownership
+CHOOSE the E_b giving lowest total_cost
+RERUN all critical physical and sensitivity checks
+
+Appendix B. Required input and output schema
+INPUT DATA COLUMN
+
+REQUIRED TREATMENT
+
+timestamp
+
+Precisely 8,760 consecutive hours for a non-leap year;
+record time zone and DST convention
+
+household_load_kwh
+
+Non-negative AC demand each hour
+
+pv_generation_kwh or ghi_w_m2
+
+Non-negative AC PV energy or raw radiation +
+orientation/performance assumptions
+
+import_tariff_aud_kwh
+
+Hourly tariff; include controlled load charges as relevant
+
+feed_in_tariff_aud_kwh
+
+Hourly or retailer-defined exported kWh credit
+
+battery_nominal_kwh
+
+Commercial model choices including 0
+
+battery_usable_kwh / power_kw
+
+Manufacturer kWh and charge/discharge AC ratings
+
+battery_cost_aud / stc_quote_aud
+
+Quote-verified installed cost and available discount
+
+assumption_metadata
+
+Location; weather year; load scenario; seed; tariff plan;
+purchase date
+
+OUTPUT
+
+FORMULA OR DEFINITION
+
+grid import/export
+
+Σ E_i,t and Σ E_x,t (kWh/year)
+
+solar self-consumption
+
+100 × (PV directly used + PV allocated to charging) / total PV,
+clearly defining loss accounting
+
+solar self-sufficiency
+
+100 × (direct PV + discharge delivered to load) / annual load
+
+equivalent full cycles
+
+Σ(E_d,t/η_d)/E_b for E_b > 0
+
+payback years
+
+Net installed cost / positive annual gross bill savings net of
+O&M
+
+bill savings
+
+C_grid(0) − C_grid(E_b)
+
+net annual benefit
+
+C_grid(0) − C_grid(E_b) − AEC(E_b)
+
+Research methodology refinement |
+
+12
+
+MATHEMATICAL MODEL • BATTERY SIZING
+
+References (IEEE style)
+[1] Project team, “Thesis Report A new,” unpublished residential solar PV and battery-sizing project report, Swinburne
+University of Technology, user-provided draft, 2026. Sections 3.8 and 6.9–8.2.
+[2] Project team, “Battery Sizing Formula Flow Chart: Updated Hourly Simulation Model,” unpublished working draft,
+user-provided 9-page PDF, 2026.
+[3] Frontier Economics, “Residential energy consumption benchmarks: Final report for the Australian Energy
+Regulator,” Australian Energy Regulator, Dec. 9, 2020. [Online]. Available:
+https://www.aer.gov.au/system/files/Residential%20energy%20consumption%20benchmarks%20%209%20December%202020_0.pdf
+[4] J. Weniger, T. Tjaden, and V. Quaschning, “Sizing of residential PV battery systems,” Energy Procedia, vol. 46, pp. 78
+–87, 2014, doi: 10.1016/j.egypro.2014.01.160.
+[5] Y. Ru, J. Kleissl, and S. Martínez, “Storage size determination for grid-connected photovoltaic systems,” IEEE Trans.
+Sustain. Energy, vol. 4, no. 1, pp. 68–81, Jan. 2013, doi: 10.1109/TSTE.2012.2199339.
+[6] R. Luthander, J. Widén, D. Nilsson, and J. Palm, “Photovoltaic self-consumption in buildings: A review,” Applied
+Energy, vol. 142, pp. 80–94, Mar. 2015, doi: 10.1016/j.apenergy.2014.12.028.
+[7] Australian Government, Department of Climate Change, Energy, the Environment and Water, “Cheaper Home
+Batteries Program,” updated Jun. 9, 2026. [Online]. Available:
+https://www.dcceew.gov.au/energy/programs/cheaper-home-batteries (accessed Oct. 4, 2026).
+[8] Clean Energy Regulator, “Solar batteries,” Small-scale Renewable Energy Scheme. [Online]. Available:
+https://cer.gov.au/schemes/renewable-energy-target/small-scale-renewable-energy-scheme/small-scalerenewable-energy-systems/solar-batteries (accessed Oct. 4, 2026).
+[9] National Renewable Energy Laboratory, “Battery Storage,” System Advisor Model (SAM) documentation. [Online].
+Available: https://sam.nrel.gov/index.php?Itemid=360&id=94&option=com_content&view=article (accessed Oct. 4,
+2026).
+[10] A. P. Dobos, “PVWatts Version 5 Manual,” National Renewable Energy Laboratory, Golden, CO, USA,
+NREL/TP-6A20-62641, 2014. [Online]. Available: https://docs.nrel.gov/docs/fy14osti/62641.pdf
+[11] Y. Riffonneau, S. Bacha, F. Barruel, and S. Ploix, “Optimal power flow management for grid connected PV systems
+with batteries,” IEEE Trans. Sustain. Energy, vol. 2, no. 3, pp. 309–320, Jul. 2011, doi: 10.1109/TSTE.2011.2114901.
+
+Source integrity note: [1] and [2] are user-provided working drafts, not peer-reviewed external
+publications. The reference list distinguishes them from peer-reviewed sources and public Australian
+Government or NREL technical materials.
+
+Research methodology refinement |
+
+13
+
+
