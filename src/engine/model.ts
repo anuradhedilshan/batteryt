@@ -220,8 +220,13 @@ export function evaluateAll(
   validateInputs(inputs);
   const series = scaleSeries(referencePV, referenceLoad, inputs);
 
-  // 41 candidates: 0.0 (solar-only reference) and 0.5 to 20.0 kWh in 0.5 kWh steps
-  const capacities = Array.from({ length: 41 }, (_, i) => i * 0.5);
+  // Candidate battery capacities: 0.0 (solar-only reference baseline)
+  // and realistic marketable residential battery capacities (3.0 to 20.0 kWh in 0.5 kWh steps).
+  // Excludes sub-residential toy capacities (< 3.0 kWh) so suggestions reflect real home energy storage systems.
+  const capacities = [
+    0,
+    ...Array.from({ length: 35 }, (_, i) => 3.0 + i * 0.5),
+  ];
   const results = capacities.map(c => simulateCapacity(c, inputs, series, false));
   const baseline = results[0];
 
@@ -229,8 +234,8 @@ export function evaluateAll(
     r.netBenefitAUD = baseline.totalAnnualCostAUD - r.totalAnnualCostAUD;
   }
 
-  // Only capacities > 0 are eligible for lowest-cost battery recommendation
-  const eligible = results.filter(r => r.capacityKWh > 0);
+  // Only capacities >= 3.0 kWh are eligible for realistic residential battery recommendation
+  const eligible = results.filter(r => r.capacityKWh >= 3.0);
   const bestPositive = eligible.reduce((best, candidate) => {
     // If tie within EPS, choose the smaller battery size
     if (Math.abs(candidate.totalAnnualCostAUD - best.totalAnnualCostAUD) < EPS) {
@@ -244,7 +249,7 @@ export function evaluateAll(
     r => Math.abs(r.capacityKWh - inputs.selectedBatteryKWh) < 1e-6
   );
   if (!selectedSummary) {
-    throw new Error(`Selected battery ${inputs.selectedBatteryKWh} kWh is outside candidate range (0.5–20 kWh in 0.5 kWh steps).`);
+    throw new Error(`Selected battery ${inputs.selectedBatteryKWh} kWh is outside realistic residential candidate range (3.0–20.0 kWh in 0.5 kWh steps).`);
   }
 
   // Run detailed hourly simulation for the selected battery

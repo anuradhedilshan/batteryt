@@ -43,7 +43,7 @@ export const CapacityComparisonTable: React.FC<TableProps> = ({
           onClick={() => setShowAll(!showAll)}
         >
           <ListFilter size={14} />
-          {showAll ? 'Show Shortlist (Key Sizes)' : `Show All 40 Capacities`}
+          {showAll ? 'Show Shortlist (Key Sizes)' : `Show All ${results.length - 1} Residential Capacities (3.0–20.0 kWh)`}
         </button>
       </div>
 

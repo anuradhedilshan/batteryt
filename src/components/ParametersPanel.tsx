@@ -384,7 +384,7 @@ export const ParametersPanel: React.FC<ParamsProps> = ({
                 </div>
                 <input
                   type="range"
-                  min={0.5}
+                  min={3.0}
                   max={20.0}
                   step={0.5}
                   value={inputs.selectedBatteryKWh}

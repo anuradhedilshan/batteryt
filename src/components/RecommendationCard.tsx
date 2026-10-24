@@ -37,7 +37,11 @@ export const RecommendationCard: React.FC<RecommendationProps> = ({
         </div>
 
         <h2 className="rec-title">
-          Lowest-Cost Eligible Battery: {bestPositive.capacityKWh.toFixed(1)} kWh
+          {isWorthwhile ? (
+            <>Optimal Battery Recommendation: {bestPositive.capacityKWh.toFixed(1)} kWh</>
+          ) : (
+            <>Lowest-Cost Residential Battery Option: {bestPositive.capacityKWh.toFixed(1)} kWh</>
+          )}
           <span style={{ fontSize: '1.125rem', fontWeight: 600, color: 'var(--text-secondary)', marginLeft: '12px' }}>
             (${bestPositive.totalAnnualCostAUD.toFixed(2)}/year total cost)
           </span>
@@ -46,17 +50,17 @@ export const RecommendationCard: React.FC<RecommendationProps> = ({
         <p className="rec-desc">
           {!isWorthwhile ? (
             <>
-              <strong>FINANCIAL RESULT:</strong> Under the present tariff and capital assumptions, no battery beats solar alone. The lowest-cost positive option is <strong>{bestPositive.capacityKWh.toFixed(1)} kWh</strong>, which costs <strong>${extraVsBaseline.toFixed(2)}/year MORE</strong> than solar without a battery ($695.65/yr). This is an <strong>economic finding</strong>, not a calculation error.
+              <strong>FINANCIAL RESULT:</strong> Under the present tariff and capital assumptions, no battery beats solar alone. If you choose to install a residential battery for energy independence or backup resilience, the lowest-cost realistic residential option is <strong>{bestPositive.capacityKWh.toFixed(1)} kWh</strong> (modular home storage), which costs <strong>${extraVsBaseline.toFixed(2)}/year MORE</strong> than solar alone (${baseline.totalAnnualCostAUD.toFixed(2)}/yr). Non-marketable sub-residential sizes (&lt; 3.0 kWh) are excluded.
             </>
           ) : (
             <>
-              <strong>FINANCIALLY ATTRACTIVE:</strong> The <strong>{bestPositive.capacityKWh.toFixed(1)} kWh</strong> battery provides the lowest overall annual cost and saves <strong>${bestPositive.netBenefitAUD.toFixed(2)}/year</strong> compared to relying on solar PV alone.
+              <strong>FINANCIALLY ATTRACTIVE:</strong> The <strong>{bestPositive.capacityKWh.toFixed(1)} kWh</strong> residential battery provides the lowest overall annual cost and saves <strong>${bestPositive.netBenefitAUD.toFixed(2)}/year</strong> compared to relying on solar PV alone.
             </>
           )}
         </p>
 
         <div className="rec-comparison">
-          <strong>Decision Benchmark:</strong> 0 kWh Solar-Only Baseline Cost = <strong>${baseline.totalAnnualCostAUD.toFixed(2)}/yr</strong>. Candidate tested batteries range from 0.5 kWh to 20.0 kWh (40 options).
+          <strong>Decision Benchmark:</strong> 0 kWh Solar-Only Baseline Cost = <strong>${baseline.totalAnnualCostAUD.toFixed(2)}/yr</strong>. Candidate tested batteries range from 3.0 kWh to 20.0 kWh (35 realistic residential sizes).
         </div>
       </div>
 
