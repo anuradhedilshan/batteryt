@@ -62,4 +62,16 @@ export function validateInputs(p: Inputs): void {
   if (p.annualOMPercentGross < 0) {
     throw new Error('Annual O&M rate cannot be negative.');
   }
+
+  if (p.tariffEscalationPct !== undefined && !Number.isFinite(p.tariffEscalationPct)) {
+    throw new Error('Tariff escalation rate must be a finite number.');
+  }
+
+  if (p.capacityFadePctPerYear !== undefined && (p.capacityFadePctPerYear < 0 || p.capacityFadePctPerYear > 50)) {
+    throw new Error('Capacity fade rate must be between 0% and 50% per year.');
+  }
+
+  if (p.stcPriceAUD !== undefined && p.stcPriceAUD < 0) {
+    throw new Error('STC price cannot be negative.');
+  }
 }

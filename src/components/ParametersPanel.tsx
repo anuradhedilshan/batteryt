@@ -324,20 +324,69 @@ export const ParametersPanel: React.FC<ParamsProps> = ({
               />
             </div>
 
-            <div className="control-group">
-              <div className="control-label-row">
-                <span>Hypothetical Subsidy / Discount</span>
-                <span className="control-value-badge">{inputs.hypotheticalDiscountPct}%</span>
-              </div>
-              <input
-                type="range"
-                min={0}
-                max={70}
-                step={5}
-                value={inputs.hypotheticalDiscountPct}
-                onChange={(e) => update('hypotheticalDiscountPct', Number(e.target.value))}
-                className="slider"
-              />
+            <div className="control-group" style={{ background: 'rgba(15, 118, 110, 0.2)', padding: '10px', borderRadius: '6px', border: '1px solid rgba(45, 212, 191, 0.3)' }}>
+              <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.8125rem', fontWeight: 700, color: '#f0fdfa', cursor: 'pointer' }}>
+                <input
+                  type="checkbox"
+                  checked={inputs.useCheaperHomeBatteriesProgram ?? true}
+                  onChange={(e) => onChange({ ...inputs, useCheaperHomeBatteriesProgram: e.target.checked })}
+                  style={{ width: '16px', height: '16px', accentColor: '#14b8a6' }}
+                />
+                <span>Cheaper Home Batteries Rebate (May 2026)</span>
+              </label>
+
+              {(inputs.useCheaperHomeBatteriesProgram ?? true) ? (
+                <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '6px', fontSize: '0.75rem', color: '#ccfbf1' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>Install Date:</span>
+                    <input
+                      type="date"
+                      value={inputs.installDate || '2026-11-01'}
+                      min="2026-05-01"
+                      max="2030-12-31"
+                      onChange={(e) => onChange({ ...inputs, installDate: e.target.value })}
+                      style={{ background: '#0f172a', color: '#f8fafc', border: '1px solid #334155', borderRadius: '4px', padding: '2px 6px', fontSize: '0.75rem' }}
+                    />
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>STC Price (AUD):</span>
+                    <input
+                      type="number"
+                      value={inputs.stcPriceAUD ?? 37}
+                      min={0}
+                      max={50}
+                      step={0.5}
+                      onChange={(e) => onChange({ ...inputs, stcPriceAUD: Number(e.target.value) })}
+                      style={{ width: '70px', background: '#0f172a', color: '#f8fafc', border: '1px solid #334155', borderRadius: '4px', padding: '2px 6px', fontSize: '0.75rem', textAlign: 'right' }}
+                    />
+                  </div>
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '6px', cursor: 'pointer', marginTop: '2px' }}>
+                    <input
+                      type="checkbox"
+                      checked={inputs.subsidyEligible ?? true}
+                      onChange={(e) => onChange({ ...inputs, subsidyEligible: e.target.checked })}
+                      style={{ accentColor: '#14b8a6' }}
+                    />
+                    <span>Accredited installer &amp; CER listed product</span>
+                  </label>
+                </div>
+              ) : (
+                <div style={{ marginTop: '8px' }}>
+                  <div className="control-label-row">
+                    <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>Hypothetical Flat Subsidy</span>
+                    <span className="control-value-badge">{inputs.hypotheticalDiscountPct}%</span>
+                  </div>
+                  <input
+                    type="range"
+                    min={0}
+                    max={70}
+                    step={5}
+                    value={inputs.hypotheticalDiscountPct}
+                    onChange={(e) => update('hypotheticalDiscountPct', Number(e.target.value))}
+                    className="slider"
+                  />
+                </div>
+              )}
             </div>
           </div>
         )}
@@ -537,6 +586,38 @@ export const ParametersPanel: React.FC<ParamsProps> = ({
                 step={0.25}
                 value={inputs.annualOMPercentGross}
                 onChange={(e) => update('annualOMPercentGross', Number(e.target.value))}
+                className="slider"
+              />
+            </div>
+
+            <div className="control-group">
+              <div className="control-label-row">
+                <span>Tariff Escalation (%/yr)</span>
+                <span className="control-value-badge">{(inputs.tariffEscalationPct ?? 0).toFixed(1)}%/yr</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={6}
+                step={0.5}
+                value={inputs.tariffEscalationPct ?? 0}
+                onChange={(e) => update('tariffEscalationPct', Number(e.target.value))}
+                className="slider"
+              />
+            </div>
+
+            <div className="control-group">
+              <div className="control-label-row">
+                <span>Battery Capacity Fade (%/yr)</span>
+                <span className="control-value-badge">{(inputs.capacityFadePctPerYear ?? 0).toFixed(1)}%/yr</span>
+              </div>
+              <input
+                type="range"
+                min={0}
+                max={3}
+                step={0.25}
+                value={inputs.capacityFadePctPerYear ?? 0}
+                onChange={(e) => update('capacityFadePctPerYear', Number(e.target.value))}
                 className="slider"
               />
             </div>

@@ -7,6 +7,7 @@ interface RecommendationProps {
   economicOptimal: Result;
   bestPositive: Result;
   selected: Result;
+  isIllustrative?: boolean;
   onSelectCapacity: (kwh: number) => void;
 }
 
@@ -15,6 +16,7 @@ export const RecommendationCard: React.FC<RecommendationProps> = ({
   economicOptimal,
   bestPositive,
   selected,
+  isIllustrative = true,
   onSelectCapacity,
 }) => {
   const isWorthwhile = bestPositive.netBenefitAUD >= -0.005;
@@ -47,9 +49,9 @@ export const RecommendationCard: React.FC<RecommendationProps> = ({
 
         <h2 className="rec-title">
           {isWorthwhile ? (
-            <>Optimal Battery Recommendation: {bestPositive.capacityKWh.toFixed(1)} kWh</>
+            <>{isIllustrative ? 'Illustrative Sizing Result' : 'Optimal Battery Recommendation'}: {bestPositive.capacityKWh.toFixed(1)} kWh</>
           ) : (
-            <>Optimal Economic Sizing: 0.0 kWh (Solar PV Only)</>
+            <>{isIllustrative ? 'Illustrative Sizing Decision' : 'Optimal Economic Sizing'}: 0.0 kWh (Solar PV Only)</>
           )}
           <span style={{ fontSize: '1.125rem', fontWeight: 600, color: 'var(--text-secondary)', marginLeft: '12px' }}>
             (${economicOptimal.totalAnnualCostAUD.toFixed(2)}/year total cost)

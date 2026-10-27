@@ -1,8 +1,11 @@
-import { Inputs, Series, Hour, Result, EvaluationOutput, HOURS, EPS } from './types';
+import { Inputs, Series, Hour, Result, EvaluationOutput, ProductEvaluation, AnnualCashFlow, HOURS, EPS } from './types';
 import { validateInputs } from './validation';
 import { Battery } from './battery';
+import { COMMERCIAL_PRODUCTS, BatteryProduct } from '../config/products';
+import { calculateSubsidy, getSTCFactor, tierWeightedKWh } from '../config/cheaperHomeBatteries';
 
-export { HOURS, EPS, Battery };
+export { HOURS, EPS, Battery, COMMERCIAL_PRODUCTS, calculateSubsidy, getSTCFactor, tierWeightedKWh };
+export type { BatteryProduct, ProductEvaluation, AnnualCashFlow };
 
 export function scaleSeries(
   referencePV: readonly number[],
@@ -239,12 +242,117 @@ export function simulateBatteryTimeSeries(
   };
 }
 
+/**
+ * Lifetime NPV evaluation with capacity fade, tariff escalation, and O&M.
+ * Matches battery_model.py evaluate() economics.
+ */
+export function evaluateLifetimeNPV(
+  bat: Battery | null,
+  pv: Float64Array,
+  load: Float64Array,
+  baseGridCost: number,
+  grossCapex: number,
+  subsidy: number,
+  p: Inputs,
+  dt = 1.0
+): {
+  npv: number;
+  equivAnnual: number;
+  netCapex: number;
+  subsidy: number;
+  savingY1: number;
+  paybackYears: number | null;
+  annualCashFlows: AnnualCashFlow[];
+} {
+  const years = p.lifeYears;
+  const r = p.annualDiscountRatePct / 100;
+  const crf = capitalRecoveryFactor(r, years);
+  const netCapex = Math.max(0, grossCapex - subsidy);
+  const omFrac = p.annualOMPercentGross / 100;
+  const omAUD = omFrac * grossCapex;
+  const escalation = (p.tariffEscalationPct ?? 0) / 100;
+  const fadePerYear = (p.capacityFadePctPerYear ?? 0) / 100;
+
+  if (!bat || bat.usable <= 0) {
+    return {
+      npv: 0.0,
+      equivAnnual: 0.0,
+      netCapex: 0.0,
+      subsidy: 0.0,
+      savingY1: 0.0,
+      paybackYears: null,
+      annualCashFlows: [],
+    };
+  }
+
+  let npv = -netCapex;
+  let savingY1 = 0;
+  const annualCashFlows: AnnualCashFlow[] = [];
+  let firstYearGridCost: number | null = null;
+
+  for (let y = 1; y <= years; y++) {
+    const fadeFactor = Math.pow(1 - fadePerYear, y - 1);
+    let yearGridCost: number;
+
+    if (fadePerYear === 0 && firstYearGridCost !== null) {
+      yearGridCost = firstYearGridCost;
+    } else {
+      const by = bat.faded(fadeFactor);
+      const simY = simulateBatteryTimeSeries(pv, load, by, dt);
+      let imp = 0;
+      let exp = 0;
+      for (let t = 0; t < simY.imp.length; t++) {
+        imp += simY.imp[t];
+        exp += simY.exp[t];
+      }
+      yearGridCost = imp * p.importAUDPerKWh - exp * p.feedInAUDPerKWh;
+      if (y === 1) {
+        firstYearGridCost = yearGridCost;
+      }
+    }
+
+    const escFactor = Math.pow(1 + escalation, y - 1);
+    const saving = (baseGridCost - yearGridCost) * escFactor;
+    if (y === 1) {
+      savingY1 = saving;
+    }
+    const netCashFlow = saving - omAUD;
+    const discountedCashFlow = netCashFlow / Math.pow(1 + r, y);
+    npv += discountedCashFlow;
+
+    annualCashFlows.push({
+      year: y,
+      fadedCapacityKWh: bat.usable * fadeFactor,
+      gridCostAUD: yearGridCost,
+      savingAUD: saving,
+      omAUD: omAUD,
+      netCashFlowAUD: netCashFlow,
+      discountedCashFlowAUD: discountedCashFlow,
+    });
+  }
+
+  const netAnnualY1 = savingY1 - omAUD;
+  const paybackYears = netAnnualY1 > 0 ? netCapex / netAnnualY1 : null;
+  const equivAnnual = npv * crf;
+
+  return {
+    npv,
+    equivAnnual,
+    netCapex,
+    subsidy,
+    savingY1,
+    paybackYears,
+    annualCashFlows,
+  };
+}
+
 export function simulateCapacity(
   capacityKWh: number,
   p: Inputs,
   series: Series,
   detailed = false,
-  dt = 1.0
+  dt = 1.0,
+  baseGridCost?: number
 ): Result {
   if (capacityKWh < 0 || !Number.isFinite(capacityKWh)) {
     throw new Error('Battery capacity must be non-negative and finite.');
@@ -271,15 +379,32 @@ export function simulateCapacity(
   let exportKWh = 0;
   let chargedKWh = 0;
   let dischargedKWh = 0;
+  let totalPV = 0;
+  let totalLoad = 0;
   for (let t = 0; t < sim.imp.length; t++) {
     importKWh += sim.imp[t];
     exportKWh += sim.exp[t];
     chargedKWh += sim.charge[t];
     dischargedKWh += sim.discharge[t];
+    totalPV += series.pv[t];
+    totalLoad += series.load[t];
   }
 
   const grossCapex = capacityKWh > 0 ? p.fixedCapexAUD + capacityKWh * p.variableCapexAUDPerKWh : 0;
-  const subsidy = grossCapex * (p.hypotheticalDiscountPct / 100);
+  let subsidy: number;
+  if (p.useCheaperHomeBatteriesProgram) {
+    const usableKWh = bat ? bat.usable : 0;
+    const sub = calculateSubsidy(
+      usableKWh,
+      p.installDate,
+      p.stcPriceAUD,
+      p.subsidyEligible ?? true
+    );
+    subsidy = capacityKWh > 0 ? sub.subsidyAUD : 0;
+  } else {
+    subsidy = grossCapex * (p.hypotheticalDiscountPct / 100);
+  }
+
   const netCapex = Math.max(0, grossCapex - subsidy);
   const crf = capitalRecoveryFactor(p.annualDiscountRatePct / 100, p.lifeYears);
   const annualCapital = netCapex * crf;
@@ -288,8 +413,25 @@ export function simulateCapacity(
   const gridCost = importKWh * p.importAUDPerKWh - exportKWh * p.feedInAUDPerKWh;
   const totalCost = gridCost + ownerCost;
 
+  const selfConsumptionPct = totalPV > 0 ? ((totalPV - exportKWh) / totalPV) * 100 : 0;
+  const selfSufficiencyPct = totalLoad > 0 ? ((totalLoad - importKWh) / totalLoad) * 100 : 0;
+
+  const effectiveBaseGridCost = baseGridCost !== undefined ? baseGridCost : gridCost;
+  const lifetime = evaluateLifetimeNPV(
+    bat,
+    series.pv,
+    series.load,
+    effectiveBaseGridCost,
+    grossCapex,
+    subsidy,
+    p,
+    dt
+  );
+
   return {
     capacityKWh,
+    usableKWh: bat ? bat.usable : 0,
+    powerKW: bat ? bat.p_discharge : 0,
     initialKWh: bat ? sim.initialStored : 0,
     finalKWh: bat ? sim.stored[sim.stored.length - 1] : 0,
     cyclicResidual: sim.cyclicResidual,
@@ -300,7 +442,9 @@ export function simulateCapacity(
     exportKWh,
     chargedKWh,
     dischargedKWh,
-    equivalentCycles: capacityKWh > 0 ? dischargedKWh / (eff * capacityKWh) : 0,
+    equivalentCycles: (bat && bat.usable > 0) ? dischargedKWh / (eff * bat.usable) : 0,
+    selfConsumptionPct,
+    selfSufficiencyPct,
     gridCostAUD: gridCost,
     grossCapexAUD: grossCapex,
     subsidyAUD: subsidy,
@@ -310,8 +454,150 @@ export function simulateCapacity(
     ownerCostAUD: ownerCost,
     totalAnnualCostAUD: totalCost,
     netBenefitAUD: 0, // Filled in relative to baseline
+    lifetimeNPVAUD: lifetime.npv,
+    equivalentAnnualBenefitAUD: lifetime.equivAnnual,
+    year1BillSavingsAUD: lifetime.savingY1,
+    simplePaybackYears: lifetime.paybackYears,
+    annualCashFlows: lifetime.annualCashFlows,
     hourly: sim.hourly,
   };
+}
+
+export function evaluateProduct(
+  product: BatteryProduct,
+  inputs: Inputs,
+  series: Series,
+  baseGridCost: number,
+  detailed = false,
+  dt = 1.0
+): ProductEvaluation {
+  const isNoBattery = product.usableKWh <= 0;
+  const eff = Math.sqrt(product.efficiencyRoundTrip || 0.90);
+  const bat = isNoBattery
+    ? null
+    : Battery.fromUsable(product.usableKWh, product.powerKW, 0.0, eff, eff);
+
+  const sim = simulateBatteryTimeSeries(
+    series.pv,
+    series.load,
+    bat,
+    dt,
+    undefined,
+    true,
+    1e-6,
+    50,
+    detailed
+  );
+
+  let importKWh = 0;
+  let exportKWh = 0;
+  let chargedKWh = 0;
+  let dischargedKWh = 0;
+  let totalPV = 0;
+  let totalLoad = 0;
+  for (let t = 0; t < sim.imp.length; t++) {
+    importKWh += sim.imp[t];
+    exportKWh += sim.exp[t];
+    chargedKWh += sim.charge[t];
+    dischargedKWh += sim.discharge[t];
+    totalPV += series.pv[t];
+    totalLoad += series.load[t];
+  }
+
+  const grossCapex = isNoBattery ? 0 : product.installedPriceAUD;
+  const subResult = calculateSubsidy(
+    product.usableKWh,
+    inputs.installDate,
+    inputs.stcPriceAUD,
+    inputs.subsidyEligible ?? true
+  );
+  const subsidy = isNoBattery ? 0 : subResult.subsidyAUD;
+  const netCapex = Math.max(0, grossCapex - subsidy);
+  const crf = capitalRecoveryFactor(inputs.annualDiscountRatePct / 100, inputs.lifeYears);
+  const annualCapital = netCapex * crf;
+  const annualOM = grossCapex * (inputs.annualOMPercentGross / 100);
+  const ownerCost = annualCapital + annualOM;
+  const gridCost = importKWh * inputs.importAUDPerKWh - exportKWh * inputs.feedInAUDPerKWh;
+  const totalCost = gridCost + ownerCost;
+  const selfConsumptionPct = totalPV > 0 ? ((totalPV - exportKWh) / totalPV) * 100 : 0;
+  const selfSufficiencyPct = totalLoad > 0 ? ((totalLoad - importKWh) / totalLoad) * 100 : 0;
+  const equivalentCycles = (!isNoBattery && bat) ? dischargedKWh / (eff * bat.usable) : 0;
+
+  const lifetime = evaluateLifetimeNPV(
+    bat,
+    series.pv,
+    series.load,
+    baseGridCost,
+    grossCapex,
+    subsidy,
+    inputs,
+    dt
+  );
+
+  const res: Result = {
+    capacityKWh: product.usableKWh,
+    usableKWh: product.usableKWh,
+    powerKW: product.powerKW,
+    productName: product.name,
+    initialKWh: bat ? sim.initialStored : 0,
+    finalKWh: bat ? sim.stored[sim.stored.length - 1] : 0,
+    cyclicResidual: sim.cyclicResidual,
+    maxEnergyResidual: sim.maxResidual,
+    minStoredKWh: sim.minStored,
+    maxStoredKWh: sim.maxStored,
+    importKWh,
+    exportKWh,
+    chargedKWh,
+    dischargedKWh,
+    equivalentCycles,
+    selfConsumptionPct,
+    selfSufficiencyPct,
+    gridCostAUD: gridCost,
+    grossCapexAUD: grossCapex,
+    subsidyAUD: subsidy,
+    netCapexAUD: netCapex,
+    annualCapitalAUD: annualCapital,
+    annualOMAUD: annualOM,
+    ownerCostAUD: ownerCost,
+    totalAnnualCostAUD: totalCost,
+    netBenefitAUD: baseGridCost - gridCost - ownerCost,
+    lifetimeNPVAUD: lifetime.npv,
+    equivalentAnnualBenefitAUD: lifetime.equivAnnual,
+    year1BillSavingsAUD: lifetime.savingY1,
+    simplePaybackYears: lifetime.paybackYears,
+    annualCashFlows: lifetime.annualCashFlows,
+    hourly: sim.hourly,
+  };
+
+  return {
+    id: product.id,
+    name: product.name,
+    manufacturer: product.manufacturer,
+    usableKWh: product.usableKWh,
+    powerKW: product.powerKW,
+    installedPriceAUD: product.installedPriceAUD,
+    subsidyAUD: subsidy,
+    netCapexAUD: netCapex,
+    lifetimeNPVAUD: lifetime.npv,
+    equivalentAnnualBenefitAUD: lifetime.equivAnnual,
+    year1BillSavingsAUD: lifetime.savingY1,
+    simplePaybackYears: lifetime.paybackYears,
+    selfConsumptionPct,
+    selfSufficiencyPct,
+    equivalentCycles,
+    result: res,
+  };
+}
+
+export function rankProducts(
+  products: readonly BatteryProduct[],
+  inputs: Inputs,
+  series: Series,
+  baseGridCost: number,
+  dt = 1.0
+): ProductEvaluation[] {
+  const list = products.map(p => evaluateProduct(p, inputs, series, baseGridCost, false, dt));
+  return list.sort((a, b) => b.lifetimeNPVAUD - a.lifetimeNPVAUD);
 }
 
 export function evaluateAll(
@@ -322,12 +608,14 @@ export function evaluateAll(
   validateInputs(inputs);
   const series = scaleSeries(referencePV, referenceLoad, inputs);
 
-  // Candidate battery capacities: 0.0 (solar-only reference baseline)
-  // and candidate storage capacities (0.5 to 20.0 kWh in 0.5 kWh steps).
-  // Total 41 tested candidate sizes (Report Section 4.5 & Section 8.2).
+  // Baseline: pure solar-only 0 kWh
+  const baseline = simulateCapacity(0.0, inputs, series, false);
+
+  // Candidate battery capacities: 0.0 to 20.0 kWh in 0.5 kWh steps (41 candidates)
   const capacities = Array.from({ length: 41 }, (_, i) => i * 0.5);
-  const results = capacities.map(c => simulateCapacity(c, inputs, series, false));
-  const baseline = results[0];
+  const results = capacities.map(c =>
+    c === 0 ? baseline : simulateCapacity(c, inputs, series, false, 1.0, baseline.gridCostAUD)
+  );
 
   for (const r of results) {
     r.netBenefitAUD = baseline.totalAnnualCostAUD - r.totalAnnualCostAUD;
@@ -343,7 +631,6 @@ export function evaluateAll(
   // Find least-cost positive battery candidate among physical storage options (Eb > 0)
   const positiveCandidates = results.filter(r => r.capacityKWh > 0);
   const bestPositive = positiveCandidates.reduce((best, candidate) => {
-    // If tie within EPS, choose the smaller battery size
     if (Math.abs(candidate.totalAnnualCostAUD - best.totalAnnualCostAUD) < EPS) {
       return candidate.capacityKWh < best.capacityKWh ? candidate : best;
     }
@@ -354,9 +641,11 @@ export function evaluateAll(
   const bestBatteryFinanciallyWorthwhile = bestPositive.netBenefitAUD >= -0.005;
 
   // Formal Mathematical Optimum Eb* (Report Section 4.5, Eq. 13 & Section 7.2):
-  // Eb* = arg min_{Eb in B} { C_grid(Eb) + AEC(Eb) }
-  // When no battery beats solar alone, Eb* = 0 kWh (baseline is the cost-minimizing choice).
   const economicOptimal = bestBatteryFinanciallyWorthwhile ? bestPositive : baseline;
+
+  // Commercial product evaluations & ranking by lifetime NPV
+  const productRankings = rankProducts(COMMERCIAL_PRODUCTS, inputs, series, baseline.gridCostAUD);
+  const bestProductByNPV = productRankings[0];
 
   // Find user selected candidate across all candidate capacities (including 0 kWh)
   const selectedSummary = results.find(
@@ -367,7 +656,7 @@ export function evaluateAll(
   }
 
   // Run detailed hourly simulation for the selected battery
-  const selectedDetail = simulateCapacity(selectedSummary.capacityKWh, inputs, series, true);
+  const selectedDetail = simulateCapacity(selectedSummary.capacityKWh, inputs, series, true, 1.0, baseline.gridCostAUD);
   selectedDetail.netBenefitAUD = baseline.totalAnnualCostAUD - selectedDetail.totalAnnualCostAUD;
   if (selectedDetail.capacityKWh > 0 && selectedDetail.netCapexAUD > 0) {
     const grossBillSavings = baseline.gridCostAUD - selectedDetail.gridCostAUD;
@@ -386,6 +675,8 @@ export function evaluateAll(
     selected: selectedDetail,
     selectedPremiumAUD: selectedDetail.totalAnnualCostAUD - economicOptimal.totalAnnualCostAUD,
     bestBatteryFinanciallyWorthwhile,
+    productRankings,
+    bestProductByNPV,
     sourceNote: '8,760 hourly simulation data',
   };
 }

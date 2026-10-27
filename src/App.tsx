@@ -6,7 +6,7 @@ import { generateCapacityComparisonCSV, generateHourlyTraceCSV, downloadCSV, Imp
 import { runFullVerificationSuite } from './engine/verification';
 import { computeTariffSensitivityMatrix } from './engine/sensitivity';
 
-import { CheckCircle2 } from 'lucide-react';
+import { CheckCircle2, AlertCircle } from 'lucide-react';
 import { Header, ActiveTab } from './components/Header';
 import { ParametersPanel } from './components/ParametersPanel';
 import { MathematicalPrincipleCard } from './components/MathematicalPrincipleCard';
@@ -299,6 +299,40 @@ export const App: React.FC = () => {
             {/* TAB 1: OPTIMAL SIZING & DECISION AID */}
             {activeTab === 'optimal-sizer' && (
               <>
+                {profile.metadata.source === 'illustration' && (
+                  <div
+                    style={{
+                      background: '#fffbeb',
+                      border: '1px solid #fef3c7',
+                      borderLeft: '4px solid #f59e0b',
+                      borderRadius: '8px',
+                      padding: '12px 16px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      flexWrap: 'wrap',
+                      gap: '10px',
+                      fontSize: '0.875rem',
+                      color: '#92400e',
+                    }}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <AlertCircle size={18} color="#d97706" />
+                      <span>
+                        <strong>Illustrative result - based on example data and assumptions.</strong> Upload your household interval smart-meter CSV data to obtain tailored sizing recommendations.
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      className="btn btn-secondary btn-sm"
+                      style={{ fontSize: '0.75rem', padding: '4px 10px' }}
+                      onClick={() => setIsUploadOpen(true)}
+                    >
+                      Upload Real Data CSV
+                    </button>
+                  </div>
+                )}
+
                 <MathematicalPrincipleCard
                   baseline={evaluationResult.data.baseline}
                   bestPositive={evaluationResult.data.bestPositive}
@@ -310,6 +344,7 @@ export const App: React.FC = () => {
                   economicOptimal={evaluationResult.data.economicOptimal}
                   bestPositive={evaluationResult.data.bestPositive}
                   selected={evaluationResult.data.selected}
+                  isIllustrative={profile.metadata.source === 'illustration'}
                   onSelectCapacity={handleSelectCapacity}
                 />
 
@@ -329,7 +364,9 @@ export const App: React.FC = () => {
                   selectedResult={evaluationResult.data.selected}
                   inputs={inputs}
                   results={evaluationResult.data.results}
+                  productRankings={evaluationResult.data.productRankings}
                   onSelectCapacity={handleSelectCapacity}
+                  onUpdateLifetime={(years) => setInputs(prev => ({ ...prev, lifeYears: years }))}
                 />
 
                 <CostCurveChart
