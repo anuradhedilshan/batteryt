@@ -1,13 +1,16 @@
 import React, { useState } from 'react';
 import { ShieldCheck, CheckCircle2, XCircle, Download, ChevronDown, ChevronUp } from 'lucide-react';
 import { VerificationSuiteOutput } from '../engine/verification';
+import { Result } from '../engine/types';
+import { ValidationPanel } from './ValidationPanel';
 import { downloadCSV } from '../engine/csv';
 
 interface VerificationProps {
   suiteOutput: VerificationSuiteOutput;
+  selected?: Result;
 }
 
-export const VerificationTool: React.FC<VerificationProps> = ({ suiteOutput }) => {
+export const VerificationTool: React.FC<VerificationProps> = ({ suiteOutput, selected }) => {
   const [isOpen, setIsOpen] = useState<boolean>(true);
 
   const handleDownloadVerificationReport = () => {
@@ -80,6 +83,7 @@ export const VerificationTool: React.FC<VerificationProps> = ({ suiteOutput }) =
 
       {isOpen && (
         <div style={{ marginTop: '10px' }}>
+          {selected && <ValidationPanel selected={selected} />}
           <div className="table-wrapper">
             <table className="data-table" role="table" aria-label="Software Verification Checks">
               <thead>

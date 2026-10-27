@@ -407,7 +407,10 @@ export const App: React.FC = () => {
             {activeTab === 'verification' && (
               <>
                 {verificationOutput && (
-                  <VerificationTool suiteOutput={verificationOutput} />
+                  <VerificationTool
+                    suiteOutput={verificationOutput}
+                    selected={evaluationResult.data.selected}
+                  />
                 )}
 
                 <AnnualAccounting
@@ -433,6 +436,7 @@ export const App: React.FC = () => {
 
                 <ScenarioSensitivityTool
                   currentInputs={inputs}
+                  productRankings={evaluationResult.data.productRankings}
                   onApplyScenario={handleApplyScenario}
                 />
               </>
