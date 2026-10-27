@@ -1,26 +1,28 @@
 import { Inputs, Series, Hour, Result, EvaluationOutput, HOURS, EPS } from './types';
 import { validateInputs } from './validation';
+import { Battery } from './battery';
 
-export { HOURS, EPS };
+export { HOURS, EPS, Battery };
 
 export function scaleSeries(
   referencePV: readonly number[],
   referenceLoad: readonly number[],
   p: Inputs
 ): Series {
-  if (referencePV.length !== HOURS || referenceLoad.length !== HOURS) {
-    throw new Error(`Both input profiles must contain exactly ${HOURS} hours (received PV: ${referencePV.length}, Load: ${referenceLoad.length}).`);
+  if (referencePV.length !== referenceLoad.length) {
+    throw new Error(`PV and Load series lengths must match (received PV: ${referencePV.length}, Load: ${referenceLoad.length}).`);
   }
 
-  const pv = new Float64Array(HOURS);
-  const load = new Float64Array(HOURS);
+  const n = referencePV.length;
+  const pv = new Float64Array(n);
+  const load = new Float64Array(n);
   const pvMultiplier = p.pvKW / p.pvReferenceKW;
 
-  for (let t = 0; t < HOURS; t++) {
+  for (let t = 0; t < n; t++) {
     const a = referencePV[t];
     const b = referenceLoad[t];
     if (!Number.isFinite(a) || !Number.isFinite(b) || a < 0 || b < 0) {
-      throw new Error(`Invalid PV or load energy value at CSV hour index ${t + 1}.`);
+      throw new Error(`Invalid PV or load energy value at interval index ${t + 1}.`);
     }
     pv[t] = a * pvMultiplier;
     load[t] = b * p.demandMultiplier;
@@ -38,101 +40,201 @@ export function capitalRecoveryFactor(rate: number, years: number): number {
   return (rate * growth) / (growth - 1);
 }
 
-interface PassOutput {
-  endKWh: number;
-  minKWh: number;
-  maxKWh: number;
-  importKWh: number;
-  exportKWh: number;
-  chargedKWh: number;
-  dischargedKWh: number;
+export interface SimulationOutput {
+  charge: Float64Array;
+  discharge: Float64Array;
+  stored: Float64Array;
+  imp: Float64Array;
+  exp: Float64Array;
+  passes: number;
   maxResidual: number;
+  minStored: number;
+  maxStored: number;
+  initialStored: number;
+  cyclicResidual: number;
   hourly?: Hour[];
 }
 
-function runYearPass(
-  capacityKWh: number,
-  p: Inputs,
-  series: Series,
-  initialKWh: number,
-  recordHours: boolean
-): PassOutput {
-  const efficiency = p.efficiencyPct / 100;
-  const minimum = (capacityKWh * p.socMinPct) / 100;
-  const maximum = (capacityKWh * p.socMaxPct) / 100;
-  const transferLimitKWh = capacityKWh * p.cRate * 1.0; // 1 hour timestep
+/**
+ * Core simulation rule per timestep dt (Phase 2):
+ * Accepts 60-min (dt=1.0), 30-min (dt=0.5), 5-min (dt=1/12) intervals.
+ * 0 kWh skips all battery/SOC logic.
+ * Enforces energy balance, stored energy boundaries, and power ratings with assertions.
+ */
+export function simulateBatteryTimeSeries(
+  pvInput: Float64Array | readonly number[],
+  loadInput: Float64Array | readonly number[],
+  bat: Battery | null,
+  dt = 1.0,
+  b0?: number,
+  cyclic = true,
+  tol = 1e-6,
+  max_pass = 20,
+  recordHourly = false
+): SimulationOutput {
+  const n = pvInput.length;
+  if (loadInput.length !== n) {
+    throw new Error(`Mismatched PV (${n}) and load (${loadInput.length}) lengths.`);
+  }
 
-  let stored = initialKWh;
-  let minObserved = stored;
-  let maxObserved = stored;
-  let imported = 0;
-  let exported = 0;
-  let charged = 0;
-  let discharged = 0;
-  let maxResidual = 0;
-  const hourly: Hour[] | undefined = recordHours ? new Array(HOURS) : undefined;
+  const pv = pvInput instanceof Float64Array ? pvInput : new Float64Array(pvInput);
+  const load = loadInput instanceof Float64Array ? loadInput : new Float64Array(loadInput);
 
-  for (let t = 0; t < HOURS; t++) {
-    const pv = series.pv[t];
-    const load = series.load[t];
-    const surplus = Math.max(0, pv - load);
-    const deficit = Math.max(0, load - pv);
-    const storedBefore = stored;
-    let charge = 0;
-    let discharge = 0;
+  // 0 kWh case: bypass all battery math
+  if (!bat || bat.usable <= 0) {
+    const z = new Float64Array(n);
+    const imp = new Float64Array(n);
+    const exp = new Float64Array(n);
+    const hourly: Hour[] | undefined = recordHourly ? new Array(n) : undefined;
 
-    if (capacityKWh > 0) {
-      if (surplus > 0) {
-        const remainingRoom = Math.max(0, (maximum - stored) / efficiency);
-        charge = Math.min(surplus, transferLimitKWh, remainingRoom);
-      } else if (deficit > 0) {
-        const availableOutput = Math.max(0, (stored - minimum) * efficiency);
-        discharge = Math.min(deficit, transferLimitKWh, availableOutput);
+    for (let t = 0; t < n; t++) {
+      imp[t] = Math.max(0, load[t] - pv[t]);
+      exp[t] = Math.max(0, pv[t] - load[t]);
+      if (hourly) {
+        hourly[t] = {
+          index: t,
+          pv: pv[t],
+          load: load[t],
+          surplus: exp[t],
+          deficit: imp[t],
+          storedBefore: 0,
+          charge: 0,
+          discharge: 0,
+          storedAfter: 0,
+          gridImport: imp[t],
+          gridExport: exp[t],
+          socEndPct: null,
+          energyResidual: 0,
+        };
       }
-      stored = stored + efficiency * charge - discharge / efficiency;
     }
 
-    const gridImport = deficit - discharge;
-    const gridExport = surplus - charge;
-    const residual = Math.abs(pv + gridImport + discharge - load - charge - gridExport);
+    return {
+      charge: z,
+      discharge: z,
+      stored: z,
+      imp,
+      exp,
+      passes: 0,
+      maxResidual: 0,
+      minStored: 0,
+      maxStored: 0,
+      initialStored: 0,
+      cyclicResidual: 0,
+      hourly,
+    };
+  }
 
+  // Cyclic convergence loop
+  let b_start = b0 ?? bat.emin;
+  let finalStart = b_start;
+  let charge = new Float64Array(n);
+  let discharge = new Float64Array(n);
+  let stored = new Float64Array(n);
+  let imp = new Float64Array(n);
+  let exp = new Float64Array(n);
+  let passesRun = 0;
+
+  for (let p = 1; p <= max_pass; p++) {
+    passesRun = p;
+    finalStart = b_start;
+    let B = b_start;
+    charge = new Float64Array(n);
+    discharge = new Float64Array(n);
+    stored = new Float64Array(n);
+
+    for (let t = 0; t < n; t++) {
+      const surplus = Math.max(0, pv[t] - load[t]);
+      const deficit = Math.max(0, load[t] - pv[t]);
+
+      if (surplus > 0) {
+        const room = (bat.emax - B) / bat.eta_c;
+        const c = Math.max(0, Math.min(surplus, bat.p_charge * dt, room));
+        charge[t] = c;
+        B += bat.eta_c * c;
+      } else if (deficit > 0) {
+        const avail = (B - bat.emin) * bat.eta_d;
+        const d = Math.max(0, Math.min(deficit, bat.p_discharge * dt, avail));
+        discharge[t] = d;
+        B -= d / bat.eta_d;
+      }
+      stored[t] = B;
+    }
+
+    if (!cyclic || Math.abs(B - b_start) < tol) {
+      break;
+    }
+    b_start = B; // Warm up next cycle
+  }
+
+  const initialStored = finalStart;
+  const endKWh = stored[n - 1];
+  const cyclicResidual = cyclic ? Math.abs(endKWh - initialStored) : 0;
+
+  // Post-simulation checks and array construction
+  let maxResidual = 0;
+  let minStored = stored[0];
+  let maxStored = stored[0];
+  const hourly: Hour[] | undefined = recordHourly ? new Array(n) : undefined;
+
+  for (let t = 0; t < n; t++) {
+    const surplus = Math.max(0, pv[t] - load[t]);
+    const deficit = Math.max(0, load[t] - pv[t]);
+    const i = deficit - discharge[t];
+    const x = surplus - charge[t];
+    imp[t] = i;
+    exp[t] = x;
+
+    const residual = Math.abs(pv[t] + i + discharge[t] - (load[t] + charge[t] + x));
     if (residual > maxResidual) maxResidual = residual;
-    if (stored < minObserved) minObserved = stored;
-    if (stored > maxObserved) maxObserved = stored;
+    if (stored[t] < minStored) minStored = stored[t];
+    if (stored[t] > maxStored) maxStored = stored[t];
 
-    imported += gridImport;
-    exported += gridExport;
-    charged += charge;
-    discharged += discharge;
+    // Assertions with hour index
+    if (residual > 1e-7) {
+      throw new Error(`Energy balance violated at timestep ${t}: residual = ${residual.toExponential(3)} kWh`);
+    }
+    if (stored[t] < bat.emin - 1e-7 || stored[t] > bat.emax + 1e-7) {
+      throw new Error(`Stored energy violated boundaries at timestep ${t}: B=${stored[t].toFixed(4)} kWh outside [${bat.emin.toFixed(4)}, ${bat.emax.toFixed(4)}]`);
+    }
+    if (charge[t] > bat.p_charge * dt + 1e-7) {
+      throw new Error(`Charge power limit exceeded at timestep ${t}: c=${charge[t].toFixed(4)} > ${bat.p_charge * dt}`);
+    }
+    if (discharge[t] > bat.p_discharge * dt + 1e-7) {
+      throw new Error(`Discharge power limit exceeded at timestep ${t}: d=${discharge[t].toFixed(4)} > ${bat.p_discharge * dt}`);
+    }
 
     if (hourly) {
       hourly[t] = {
         index: t,
-        pv,
-        load,
+        pv: pv[t],
+        load: load[t],
         surplus,
         deficit,
-        storedBefore,
-        charge,
-        discharge,
-        storedAfter: stored,
-        gridImport,
-        gridExport,
-        socEndPct: capacityKWh > 0 ? (100 * stored) / capacityKWh : null,
+        storedBefore: t === 0 ? initialStored : stored[t - 1],
+        charge: charge[t],
+        discharge: discharge[t],
+        storedAfter: stored[t],
+        gridImport: i,
+        gridExport: x,
+        socEndPct: bat.usable > 0 ? (100 * (stored[t] - bat.emin)) / bat.usable : null,
         energyResidual: residual,
       };
     }
   }
 
   return {
-    endKWh: stored,
-    minKWh: minObserved,
-    maxKWh: maxObserved,
-    importKWh: imported,
-    exportKWh: exported,
-    chargedKWh: charged,
-    dischargedKWh: discharged,
+    charge,
+    discharge,
+    stored,
+    imp,
+    exp,
+    passes: passesRun,
     maxResidual,
+    minStored,
+    maxStored,
+    initialStored,
+    cyclicResidual,
     hourly,
   };
 }
@@ -141,39 +243,39 @@ export function simulateCapacity(
   capacityKWh: number,
   p: Inputs,
   series: Series,
-  detailed = false
+  detailed = false,
+  dt = 1.0
 ): Result {
   if (capacityKWh < 0 || !Number.isFinite(capacityKWh)) {
     throw new Error('Battery capacity must be non-negative and finite.');
   }
 
-  const lower = (capacityKWh * p.socMinPct) / 100;
-  const upper = (capacityKWh * p.socMaxPct) / 100;
-  let start = lower;
+  const eff = p.efficiencyPct / 100;
+  const bat = capacityKWh > 0
+    ? Battery.fromNominal(capacityKWh, p.socMinPct / 100, p.socMaxPct / 100, p.cRate, eff, eff)
+    : null;
 
-  // Cyclic representative-year warm-up for positive battery storage
-  if (capacityKWh > 0) {
-    for (let k = 0; k < 50; k++) {
-      const end = runYearPass(capacityKWh, p, series, start, false).endKWh;
-      if (Math.abs(end - start) < 1e-9) {
-        start = end;
-        break;
-      }
-      start = end;
-    }
-  }
+  const sim = simulateBatteryTimeSeries(
+    series.pv,
+    series.load,
+    bat,
+    dt,
+    undefined,
+    true,
+    1e-6,
+    50,
+    detailed
+  );
 
-  const annual = runYearPass(capacityKWh, p, series, start, detailed);
-  const cyclicResidual = capacityKWh > 0 ? Math.abs(annual.endKWh - start) : 0;
-
-  if (annual.maxResidual > 1e-7) {
-    throw new Error(`Hourly energy-balance residual check failed at capacity ${capacityKWh} kWh (residual: ${annual.maxResidual.toExponential(2)} kWh).`);
-  }
-  if (capacityKWh > 0 && (annual.minKWh < lower - 1e-7 || annual.maxKWh > upper + 1e-7)) {
-    throw new Error(`SOC constraint boundary violated at capacity ${capacityKWh} kWh.`);
-  }
-  if (capacityKWh > 0 && cyclicResidual > 1e-6) {
-    throw new Error(`Cyclic-year starting SOC did not converge at capacity ${capacityKWh} kWh.`);
+  let importKWh = 0;
+  let exportKWh = 0;
+  let chargedKWh = 0;
+  let dischargedKWh = 0;
+  for (let t = 0; t < sim.imp.length; t++) {
+    importKWh += sim.imp[t];
+    exportKWh += sim.exp[t];
+    chargedKWh += sim.charge[t];
+    dischargedKWh += sim.discharge[t];
   }
 
   const grossCapex = capacityKWh > 0 ? p.fixedCapexAUD + capacityKWh * p.variableCapexAUDPerKWh : 0;
@@ -183,22 +285,22 @@ export function simulateCapacity(
   const annualCapital = netCapex * crf;
   const annualOM = grossCapex * (p.annualOMPercentGross / 100);
   const ownerCost = annualCapital + annualOM;
-  const gridCost = annual.importKWh * p.importAUDPerKWh - annual.exportKWh * p.feedInAUDPerKWh;
+  const gridCost = importKWh * p.importAUDPerKWh - exportKWh * p.feedInAUDPerKWh;
   const totalCost = gridCost + ownerCost;
 
   return {
     capacityKWh,
-    initialKWh: start,
-    finalKWh: annual.endKWh,
-    cyclicResidual,
-    maxEnergyResidual: annual.maxResidual,
-    minStoredKWh: annual.minKWh,
-    maxStoredKWh: annual.maxKWh,
-    importKWh: annual.importKWh,
-    exportKWh: annual.exportKWh,
-    chargedKWh: annual.chargedKWh,
-    dischargedKWh: annual.dischargedKWh,
-    equivalentCycles: capacityKWh > 0 ? annual.dischargedKWh / (p.efficiencyPct / 100) / capacityKWh : 0,
+    initialKWh: bat ? sim.initialStored : 0,
+    finalKWh: bat ? sim.stored[sim.stored.length - 1] : 0,
+    cyclicResidual: sim.cyclicResidual,
+    maxEnergyResidual: sim.maxResidual,
+    minStoredKWh: sim.minStored,
+    maxStoredKWh: sim.maxStored,
+    importKWh,
+    exportKWh,
+    chargedKWh,
+    dischargedKWh,
+    equivalentCycles: capacityKWh > 0 ? dischargedKWh / (eff * capacityKWh) : 0,
     gridCostAUD: gridCost,
     grossCapexAUD: grossCapex,
     subsidyAUD: subsidy,
@@ -208,7 +310,7 @@ export function simulateCapacity(
     ownerCostAUD: ownerCost,
     totalAnnualCostAUD: totalCost,
     netBenefitAUD: 0, // Filled in relative to baseline
-    hourly: annual.hourly,
+    hourly: sim.hourly,
   };
 }
 

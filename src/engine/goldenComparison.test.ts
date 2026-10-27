@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { simulateCapacity, scaleSeries, capitalRecoveryFactor } from './model';
+import { simulateCapacity, capitalRecoveryFactor } from './model';
 import { Inputs } from './types';
 import syntheticData from '../data/syntheticReference.json';
 
