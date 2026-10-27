@@ -63,6 +63,7 @@ export interface Result {
   ownerCostAUD: number;
   totalAnnualCostAUD: number;
   netBenefitAUD: number;
+  simplePaybackYears?: number | null;
   hourly?: Hour[];
 }
 
@@ -70,6 +71,7 @@ export interface EvaluationOutput {
   series: Series;
   results: Result[];
   baseline: Result;
+  economicOptimal: Result;
   bestPositive: Result;
   selected: Result;
   selectedPremiumAUD: number;

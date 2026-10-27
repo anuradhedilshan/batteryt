@@ -46,12 +46,20 @@ describe('Mathematical Simulation Engine', () => {
     expect(out.baseline.exportKWh).toBeCloseTo(7871.0, 1);
     expect(out.baseline.totalAnnualCostAUD).toBeCloseTo(695.65, 1);
 
-    // Best positive battery must be 7.5 kWh
+    // Economic optimal must be 0 kWh under baseline prices (Report Eq. 13 & Sec 7.2)
+    expect(out.economicOptimal.capacityKWh).toBe(0);
+    expect(out.bestBatteryFinanciallyWorthwhile).toBe(false);
+
+    // Best positive battery (least-cost physical storage option) must be 7.5 kWh
     expect(out.bestPositive.capacityKWh).toBe(7.5);
     expect(out.bestPositive.totalAnnualCostAUD).toBeCloseTo(707.72, 1);
     expect(out.bestPositive.importKWh).toBeCloseTo(923.09, 1);
     expect(out.bestPositive.exportKWh).toBeCloseTo(5445.61, 1);
     expect(out.bestPositive.netBenefitAUD).toBeCloseTo(-12.07, 1);
+    expect(out.bestPositive.simplePaybackYears).toBeCloseTo(7.51, 1);
+
+    // Baseline is cheaper than 7.5 kWh
+    expect(out.baseline.totalAnnualCostAUD).toBeLessThan(out.bestPositive.totalAnnualCostAUD);
 
     // User selected 10.0 kWh battery
     expect(out.selected.capacityKWh).toBe(10.0);
@@ -60,8 +68,8 @@ describe('Mathematical Simulation Engine', () => {
     expect(out.selected.exportKWh).toBeCloseTo(4902.83, 1);
     expect(out.selected.netBenefitAUD).toBeCloseTo(-51.70, 1);
 
-    // Cost gap
-    expect(out.selectedPremiumAUD).toBeCloseTo(747.35 - 707.72, 1);
+    // Cost gap vs economic optimum (0 kWh)
+    expect(out.selectedPremiumAUD).toBeCloseTo(747.35 - 695.65, 1);
   });
 
   it('verifies the U-shaped cost curve around the 7.5 kWh minimum', () => {
@@ -106,8 +114,8 @@ describe('Mathematical Simulation Engine', () => {
 
   it('rejects invalid inputs correctly', () => {
     expect(() =>
-      evaluateAll({ ...DEFAULTS, selectedBatteryKWh: 0 }, DEFAULT_PV, DEFAULT_LOAD)
-    ).toThrow(/positive battery capacity/i);
+      evaluateAll({ ...DEFAULTS, selectedBatteryKWh: -1 }, DEFAULT_PV, DEFAULT_LOAD)
+    ).toThrow(/cannot be negative/i);
 
     expect(() =>
       evaluateAll({ ...DEFAULTS, socMinPct: 90, socMaxPct: 20 }, DEFAULT_PV, DEFAULT_LOAD)
@@ -135,14 +143,30 @@ describe('Mathematical Simulation Engine', () => {
   it('computes tariff sensitivity matrix matching Section 7.3 and Fig. 5 of report', async () => {
     const { computeTariffSensitivityMatrix } = await import('./sensitivity');
     const out = evaluateAll(DEFAULTS, DEFAULT_PV, DEFAULT_LOAD);
-    const matrix = computeTariffSensitivityMatrix(out.results, [0.25, 0.35, 0.65], [0.03, 0.05]);
+    const matrix = computeTariffSensitivityMatrix(out.results);
 
-    expect(matrix.grid.length).toBe(3);
-    expect(matrix.grid[0].length).toBe(2);
+    expect(matrix.importTariffs).toEqual([0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55]);
+    expect(matrix.feedInTariffs).toEqual([0.15, 0.12, 0.09, 0.06, 0.03, 0.00]);
 
-    // At high retail price ($0.65/kWh) and low FiT ($0.03/kWh), battery should become economically viable
-    const highTariffCell = matrix.grid[2][0]; // import 0.65, fit 0.03
-    expect(highTariffCell.isEconomicallyViable).toBe(true);
-    expect(highTariffCell.optimalCapacityKWh).toBeGreaterThanOrEqual(7.5);
+    // Expected capacities strictly matching Report Fig. 5 heatmap
+    const expectedFig5 = [
+      [0, 0, 0, 0, 0, 8, 9],            // FiT 0.15
+      [0, 0, 0, 0, 7.5, 8.5, 9.5],      // FiT 0.12
+      [0, 0, 0, 7.5, 8.5, 9, 9.5],      // FiT 0.09
+      [0, 0, 0, 8, 9, 9.5, 10],         // FiT 0.06
+      [0, 0, 7.5, 8.5, 9.5, 10, 10.5],  // FiT 0.03
+      [0, 0, 8.5, 9, 9.5, 10, 10.5],    // FiT 0.00
+    ];
+
+    for (let r = 0; r < expectedFig5.length; r++) {
+      for (let c = 0; c < expectedFig5[r].length; c++) {
+        expect(matrix.grid[r][c].optimalCapacityKWh).toBe(expectedFig5[r][c]);
+      }
+    }
+
+    // Default baseline condition ($0.35 import, $0.05 FiT) -> Eb* is 0 kWh!
+    const baselineCell = matrix.grid[3][2]; // row 3 is 0.06 FiT, col 2 is 0.35 import -> 0 kWh
+    expect(baselineCell.optimalCapacityKWh).toBe(0);
+    expect(baselineCell.isEconomicallyViable).toBe(false);
   });
 });

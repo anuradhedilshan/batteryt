@@ -24,7 +24,7 @@ import { CSVUploadModal } from './components/CSVUploadModal';
 import { ResearchNotes } from './components/ResearchNotes';
 
 const DEFAULTS: Inputs = {
-  selectedBatteryKWh: 7.5, // Auto-set to the optimal recommendation
+  selectedBatteryKWh: 0, // Defaults to the economic optimum (0 kWh Solar-Only under report baseline)
   pvKW: 6.6,
   pvReferenceKW: 6.6,
   demandMultiplier: 1.0,
@@ -84,7 +84,7 @@ export const App: React.FC = () => {
   // Keep selected battery auto-following the optimal recommendation unless user chooses manual what-if
   useEffect(() => {
     if (autoFollowOptimal && evaluationResult.ok) {
-      const optCap = evaluationResult.data.bestPositive.capacityKWh;
+      const optCap = evaluationResult.data.economicOptimal.capacityKWh;
       if (Math.abs(inputs.selectedBatteryKWh - optCap) > 1e-6) {
         setInputs(prev => ({ ...prev, selectedBatteryKWh: optCap }));
       }
@@ -143,7 +143,7 @@ export const App: React.FC = () => {
   const handleSelectBest = () => {
     if (evaluationResult.ok) {
       setAutoFollowOptimal(true);
-      const optCap = evaluationResult.data.bestPositive.capacityKWh;
+      const optCap = evaluationResult.data.economicOptimal.capacityKWh;
       setInputs(prev => ({ ...prev, selectedBatteryKWh: optCap }));
       setActionToast(`Restored ${optCap.toFixed(1)} kWh optimal recommendation`);
     }
@@ -229,7 +229,7 @@ export const App: React.FC = () => {
 
   const checksPass = verificationOutput ? verificationOutput.allPassed : false;
   const isSelectedDifferentFromOptimal = evaluationResult.ok &&
-    Math.abs(evaluationResult.data.selected.capacityKWh - evaluationResult.data.bestPositive.capacityKWh) > 1e-6;
+    Math.abs(evaluationResult.data.selected.capacityKWh - evaluationResult.data.economicOptimal.capacityKWh) > 1e-6;
 
   return (
     <div className="app-container">
@@ -239,6 +239,8 @@ export const App: React.FC = () => {
         onChange={handleInputsChange}
         preset={preset}
         onPresetChange={handlePresetChange}
+        baseline={evaluationResult.ok ? evaluationResult.data.baseline : { capacityKWh: 0, totalAnnualCostAUD: 695.65 } as any}
+        economicOptimal={evaluationResult.ok ? evaluationResult.data.economicOptimal : { capacityKWh: 0, totalAnnualCostAUD: 695.65 } as any}
         bestPositive={evaluationResult.ok ? evaluationResult.data.bestPositive : { capacityKWh: 7.5, totalAnnualCostAUD: 707.72 } as any}
         autoFollowOptimal={autoFollowOptimal}
         onToggleAutoFollow={setAutoFollowOptimal}
@@ -305,14 +307,16 @@ export const App: React.FC = () => {
 
                 <RecommendationCard
                   baseline={evaluationResult.data.baseline}
+                  economicOptimal={evaluationResult.data.economicOptimal}
                   bestPositive={evaluationResult.data.bestPositive}
                   selected={evaluationResult.data.selected}
-                  onSelectBest={handleSelectBest}
+                  onSelectCapacity={handleSelectCapacity}
                 />
 
                 {isSelectedDifferentFromOptimal && (
                   <SelectionFocusCard
                     selected={evaluationResult.data.selected}
+                    economicOptimal={evaluationResult.data.economicOptimal}
                     bestPositive={evaluationResult.data.bestPositive}
                     baseline={evaluationResult.data.baseline}
                     onSelectBest={handleSelectBest}
@@ -320,7 +324,8 @@ export const App: React.FC = () => {
                 )}
 
                 <CommercialAdvisor
-                  optimalResult={evaluationResult.data.bestPositive}
+                  economicOptimal={evaluationResult.data.economicOptimal}
+                  bestPositive={evaluationResult.data.bestPositive}
                   selectedResult={evaluationResult.data.selected}
                   inputs={inputs}
                   results={evaluationResult.data.results}
@@ -330,6 +335,7 @@ export const App: React.FC = () => {
                 <CostCurveChart
                   results={evaluationResult.data.results}
                   baseline={evaluationResult.data.baseline}
+                  economicOptimal={evaluationResult.data.economicOptimal}
                   bestPositive={evaluationResult.data.bestPositive}
                   selected={evaluationResult.data.selected}
                   onSelectCapacity={handleSelectCapacity}
@@ -337,6 +343,7 @@ export const App: React.FC = () => {
 
                 <CapacityComparisonTable
                   results={evaluationResult.data.results}
+                  economicOptimal={evaluationResult.data.economicOptimal}
                   bestPositive={evaluationResult.data.bestPositive}
                   selected={evaluationResult.data.selected}
                   onSelectCapacity={handleSelectCapacity}

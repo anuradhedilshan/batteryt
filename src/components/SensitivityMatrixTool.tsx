@@ -39,55 +39,57 @@ export const SensitivityMatrixTool: React.FC<SensitivityProps> = ({
         <table className="data-table" style={{ textAlign: 'center' }}>
           <thead>
             <tr>
-              <th scope="col" style={{ textAlign: 'left', minWidth: '140px' }}>
-                Retail Import Tariff ↓ \ FiT →
+              <th scope="col" style={{ textAlign: 'left', minWidth: '150px' }}>
+                Feed-in Tariff ↓ \ Import Tariff →
               </th>
-              {matrix.feedInTariffs.map(fit => (
-                <th key={fit} scope="col">
-                  FiT: ${fit.toFixed(2)}/kWh
+              {matrix.importTariffs.map(imp => (
+                <th key={imp} scope="col">
+                  ${imp.toFixed(2)}/kWh
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {matrix.importTariffs.map((imp, rowIdx) => (
-              <tr key={imp}>
+            {matrix.feedInTariffs.map((fit, rowIdx) => (
+              <tr key={fit}>
                 <td style={{ textAlign: 'left', fontWeight: 700, background: 'var(--bg-surface-subtle)' }}>
-                  Import: ${imp.toFixed(2)}/kWh
+                  FiT: ${fit.toFixed(2)}/kWh
                 </td>
-                {matrix.feedInTariffs.map((fit, colIdx) => {
+                {matrix.importTariffs.map((imp, colIdx) => {
                   const cell = matrix.grid[rowIdx][colIdx];
                   const isCurrent =
                     Math.abs(imp - currentImportTariff) < 0.005 &&
                     Math.abs(fit - currentFit) < 0.005;
 
+                  const isZero = cell.optimalCapacityKWh === 0;
+
                   return (
                     <td
-                      key={fit}
+                      key={imp}
                       onClick={() => onApplyTariff(imp, fit)}
-                      title={`Click to apply Import $${imp.toFixed(2)}, FiT $${fit.toFixed(2)}`}
+                      title={`Click to apply Import $${imp.toFixed(2)}, FiT $${fit.toFixed(2)} (${isZero ? '0.0 kWh Solar-Only optimal; least-cost battery: ' + cell.bestPositiveCapacityKWh.toFixed(1) + ' kWh' : cell.optimalCapacityKWh.toFixed(1) + ' kWh optimal'})`}
                       style={{
                         cursor: 'pointer',
                         background: isCurrent
                           ? '#fef3c7'
                           : cell.isEconomicallyViable
                           ? '#f0fdf4'
-                          : '#fffdfa',
+                          : '#f8fafc',
                         border: 'none',
                         boxShadow: isCurrent ? 'inset 0 0 0 2px #475569' : 'none',
                         padding: '12px 10px',
                         transition: 'transform 0.1s',
                       }}
                     >
-                      <div style={{ fontSize: '1.0625rem', fontWeight: 900, color: cell.isEconomicallyViable ? '#0f766e' : '#b45309' }}>
-                        {cell.optimalCapacityKWh.toFixed(1)} kWh
+                      <div style={{ fontSize: '1.0625rem', fontWeight: 900, color: cell.isEconomicallyViable ? '#0f766e' : '#64748b' }}>
+                        {isZero ? '0.0 kWh' : `${cell.optimalCapacityKWh.toFixed(1)} kWh`}
                       </div>
 
-                      <div style={{ fontSize: '0.6875rem', marginTop: '2px', color: cell.isEconomicallyViable ? '#15803d' : '#9a3412', fontWeight: 600 }}>
+                      <div style={{ fontSize: '0.6875rem', marginTop: '2px', color: cell.isEconomicallyViable ? '#15803d' : '#64748b', fontWeight: 600 }}>
                         {cell.isEconomicallyViable ? (
                           `Saves +$${cell.netSavingsVsBaseline.toFixed(0)}/yr`
                         ) : (
-                          `Costs -$${(-cell.netSavingsVsBaseline).toFixed(0)}/yr vs 0 kWh`
+                          `Solar-Only (${cell.bestPositiveCapacityKWh.toFixed(1)} kWh: -$${(-cell.bestPositiveNetSavings).toFixed(0)}/yr)`
                         )}
                       </div>
 

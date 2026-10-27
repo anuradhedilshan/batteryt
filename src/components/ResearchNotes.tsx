@@ -33,7 +33,7 @@ export const ResearchNotes: React.FC = () => {
           </h3>
           <ul style={{ paddingLeft: '20px', color: 'var(--text-secondary)', display: 'flex', flexDirection: 'column', gap: '4px' }}>
             <li><strong>Self-Consumption-First Priority:</strong> Solar serves household load first; surplus charges the battery up to its C-rate and SOC limits; deficits discharge the battery; remaining balance transacts with the grid.</li>
-            <li><strong>No Solar-Only Zero Battery:</strong> 0 kWh is strictly the no-battery baseline ($695.65/yr). The lowest-cost residential battery is selected from physically marketable residential candidates (3.0 to 20.0 kWh), excluding non-marketable toy sizes.</li>
+            <li><strong>Optimization Decision Function (Report Eq. 13 &amp; Sec. 7.2):</strong> Candidate set B includes 0 kWh (solar-only baseline) and candidate battery sizes (0.5 to 20.0 kWh). Under baseline economic assumptions, 0 kWh yields the lowest overall annual expenditure ($695.65/yr), meaning a battery is economically rejected unless tariffs rise or capex falls. The least-cost physical storage option is 7.5 kWh ($707.72/yr).</li>
             <li><strong>Annualization:</strong> Capital is annualized using the Capital Recovery Factor: <code>CRF(r, L) = r(1+r)^L / ((1+r)^L - 1)</code>.</li>
             <li><strong>Cyclic Convergence:</strong> Battery starting SOC is iterated up to 50 passes until end-of-year energy matches start-of-year energy within 1e-6 kWh, preventing artificial initial energy bias.</li>
           </ul>

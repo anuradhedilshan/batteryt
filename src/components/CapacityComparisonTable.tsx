@@ -4,6 +4,7 @@ import { Table, ListFilter } from 'lucide-react';
 
 interface TableProps {
   results: Result[];
+  economicOptimal: Result;
   bestPositive: Result;
   selected: Result;
   onSelectCapacity: (kwh: number) => void;
@@ -11,6 +12,7 @@ interface TableProps {
 
 export const CapacityComparisonTable: React.FC<TableProps> = ({
   results,
+  economicOptimal,
   bestPositive,
   selected,
   onSelectCapacity,
@@ -34,7 +36,7 @@ export const CapacityComparisonTable: React.FC<TableProps> = ({
             Candidate Capacity Comparison Table
           </h2>
           <p className="card-desc">
-            Directly compare candidate battery capacities against the 0 kWh solar-only baseline and the optimal {bestPositive.capacityKWh.toFixed(1)} kWh size.
+            Directly compare candidate battery capacities against the 0 kWh solar-only baseline and the optimal {economicOptimal.capacityKWh.toFixed(1)} kWh size (Report Section 4.5 &amp; 7.2).
           </p>
         </div>
 
@@ -43,7 +45,7 @@ export const CapacityComparisonTable: React.FC<TableProps> = ({
           onClick={() => setShowAll(!showAll)}
         >
           <ListFilter size={14} />
-          {showAll ? 'Show Shortlist (Key Sizes)' : `Show All ${results.length - 1} Residential Capacities (3.0–20.0 kWh)`}
+          {showAll ? 'Show Shortlist (Key Sizes)' : `Show All ${results.length} Tested Capacities (0.0–20.0 kWh)`}
         </button>
       </div>
 
@@ -57,41 +59,48 @@ export const CapacityComparisonTable: React.FC<TableProps> = ({
               <th scope="col">Ownership Cost</th>
               <th scope="col">Total Annual Cost</th>
               <th scope="col">Net Savings vs Solar-Only</th>
-              <th scope="col">Extra Cost vs Optimal</th>
+              <th scope="col">Cost Gap vs Eb*</th>
             </tr>
           </thead>
           <tbody>
             {displayedRows.map((r) => {
               const isBaseline = r.capacityKWh === 0;
               const isSelected = Math.abs(r.capacityKWh - selected.capacityKWh) < 1e-6;
-              const isOptimal = Math.abs(r.capacityKWh - bestPositive.capacityKWh) < 1e-6;
-              const gapVsOpt = Math.max(0, r.totalAnnualCostAUD - bestPositive.totalAnnualCostAUD);
+              const isEconomicOpt = Math.abs(r.capacityKWh - economicOptimal.capacityKWh) < 1e-6;
+              const isBestPositive = Math.abs(r.capacityKWh - bestPositive.capacityKWh) < 1e-6 && !isEconomicOpt;
+              const gapVsOpt = r.totalAnnualCostAUD - economicOptimal.totalAnnualCostAUD;
 
               let rowClass = 'clickable';
-              if (isBaseline) rowClass = 'row-baseline';
-              else if (isSelected) rowClass = 'row-selected clickable';
-              else if (isOptimal) rowClass = 'row-optimal clickable';
+              if (isSelected) rowClass = 'row-selected clickable';
+              else if (isEconomicOpt) rowClass = 'row-optimal clickable';
+              else if (isBaseline) rowClass = 'row-baseline clickable';
 
               return (
                 <tr
                   key={r.capacityKWh}
                   className={rowClass}
-                  tabIndex={isBaseline ? -1 : 0}
-                  onClick={() => {
-                    if (!isBaseline) onSelectCapacity(r.capacityKWh);
-                  }}
+                  tabIndex={0}
+                  onClick={() => onSelectCapacity(r.capacityKWh)}
                   onKeyDown={(e) => {
-                    if (!isBaseline && (e.key === 'Enter' || e.key === ' ')) {
+                    if (e.key === 'Enter' || e.key === ' ') {
                       e.preventDefault();
                       onSelectCapacity(r.capacityKWh);
                     }
                   }}
-                  title={isBaseline ? '0 kWh is strictly the reference baseline' : `Click to examine ${r.capacityKWh.toFixed(1)} kWh`}
+                  title={`Click to examine ${r.capacityKWh.toFixed(1)} kWh`}
                 >
                   <td>
-                    <strong>{isBaseline ? 'Solar-Only Baseline' : `${r.capacityKWh.toFixed(1)} kWh`}</strong>
-                    {isBaseline && <span className="table-tag table-tag-baseline">0 kWh · NOT A BATTERY</span>}
-                    {isOptimal && <span className="table-tag table-tag-optimal">BEST BATTERY</span>}
+                    <strong>{isBaseline ? '0.0 kWh (Solar-Only)' : `${r.capacityKWh.toFixed(1)} kWh`}</strong>
+                    {isEconomicOpt && (
+                      <span className="table-tag table-tag-optimal">
+                        ★ OPTIMUM (Eb*)
+                      </span>
+                    )}
+                    {isBestPositive && (
+                      <span className="table-tag" style={{ background: '#e0f2fe', color: '#0369a1', borderColor: '#bae6fd' }}>
+                        LEAST-COST BATTERY
+                      </span>
+                    )}
                     {isSelected && <span className="table-tag table-tag-selected">SELECTED</span>}
                   </td>
                   <td>{r.importKWh.toLocaleString('en-AU', { maximumFractionDigits: 1 })} kWh</td>
@@ -103,8 +112,8 @@ export const CapacityComparisonTable: React.FC<TableProps> = ({
                   <td style={{ color: r.netBenefitAUD >= 0 ? '#15803d' : '#b91c1c', fontWeight: 600 }}>
                     {isBaseline ? '$0.00 (Reference)' : (r.netBenefitAUD >= 0 ? `+$${r.netBenefitAUD.toFixed(2)}/yr` : `-$${(-r.netBenefitAUD).toFixed(2)}/yr`)}
                   </td>
-                  <td style={{ fontWeight: isOptimal ? 700 : 400, color: isOptimal ? '#0f766e' : 'inherit' }}>
-                    {isBaseline ? '—' : (gapVsOpt < 0.005 ? '$0.00 (Minimum)' : `+$${gapVsOpt.toFixed(2)}/yr`)}
+                  <td style={{ fontWeight: isEconomicOpt ? 700 : 400, color: isEconomicOpt ? '#0f766e' : 'inherit' }}>
+                    {Math.abs(gapVsOpt) < 0.005 ? '$0.00 (Minimum)' : `+$${gapVsOpt.toFixed(2)}/yr`}
                   </td>
                 </tr>
               );

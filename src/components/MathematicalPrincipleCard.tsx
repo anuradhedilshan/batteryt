@@ -52,11 +52,11 @@ export const MathematicalPrincipleCard: React.FC<MathProps> = ({
           </p>
         </div>
 
-        {/* Why 7.5 kWh is the Optimal Size (Lecturer's Direct Question) */}
+        {/* Why 7.5 kWh is the Least-Cost Positive Battery */}
         <div className="math-col" style={{ background: 'rgba(15, 118, 110, 0.25)', border: 'none' }}>
           <h3 style={{ color: '#5eead4', display: 'flex', alignItems: 'center', gap: '4px' }}>
             <TrendingDown size={14} />
-            2. Why {optCap.toFixed(1)} kWh is the Optimal Size
+            2. Least-Cost Battery ({optCap.toFixed(1)} kWh)
           </h3>
           <div style={{ fontSize: '0.8125rem', color: '#f1f5f9', lineHeight: 1.6 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
@@ -64,8 +64,8 @@ export const MathematicalPrincipleCard: React.FC<MathProps> = ({
               <strong style={{ color: '#fca5a5' }}>${cost5.toFixed(2)}/yr (costs MORE)</strong>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '4px 6px', background: 'rgba(15, 118, 110, 0.4)', borderRadius: '4px' }}>
-              <span style={{ fontWeight: 700, color: '#5eead4' }}>Optimal ({optCap.toFixed(1)} kWh):</span>
-              <strong style={{ color: '#5eead4' }}>${optCost.toFixed(2)}/yr (MINIMUM)</strong>
+              <span style={{ fontWeight: 700, color: '#5eead4' }}>Local Min ({optCap.toFixed(1)} kWh):</span>
+              <strong style={{ color: '#5eead4' }}>${optCost.toFixed(2)}/yr (BEST BATTERY)</strong>
             </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', padding: '3px 0' }}>
               <span>Larger (10.0 kWh):</span>
@@ -73,21 +73,21 @@ export const MathematicalPrincipleCard: React.FC<MathProps> = ({
             </div>
           </div>
           <p className="math-explanation" style={{ marginTop: '6px' }}>
-            All numbers above are higher, all numbers below are higher. Only <strong>{optCap.toFixed(1)} kWh</strong> minimizes the cost!
+            Among physical battery systems (E_b &gt; 0), <strong>{optCap.toFixed(1)} kWh</strong> is the local cost minimum of the U-curve.
           </p>
         </div>
 
-        {/* The Number Behind Zero */}
+        {/* The Economic Decision (Report Section 4.5 & 7.2) */}
         <div className="math-col">
           <h3 style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
             <HelpCircle size={14} />
-            3. The Number Behind &quot;0 kWh&quot;
+            3. Economic Optimum E_b* = 0 kWh
           </h3>
           <div className="math-formula" style={{ color: '#93c5fd' }}>
             C_0 = ${baseline.totalAnnualCostAUD.toFixed(2)} / year
           </div>
           <p className="math-explanation">
-            <strong>0 kWh is NOT zero cost.</strong> It represents the <strong>Solar-Only baseline bill</strong>: 3,112 kWh grid imports ($1,089.20) minus 7,871 kWh solar exports ($393.55) = <strong>${baseline.totalAnnualCostAUD.toFixed(2)}/yr</strong> with $0 battery capex.
+            <strong>Solar-Only Baseline is Cheaper:</strong> 3,112 kWh grid imports minus 7,871 kWh exports = <strong>${baseline.totalAnnualCostAUD.toFixed(2)}/yr</strong> with $0 battery capex. Because $695.65 &lt; ${optCost.toFixed(2)}, the economic optimum E_b* is <strong>0 kWh</strong> (Report Sec. 7.2).
           </p>
         </div>
 

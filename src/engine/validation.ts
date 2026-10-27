@@ -7,8 +7,8 @@ export function validateInputs(p: Inputs): void {
     }
   }
 
-  if (p.selectedBatteryKWh <= 0) {
-    throw new Error('Select a positive battery capacity greater than 0 kWh. 0 kWh represents the solar-only reference baseline.');
+  if (p.selectedBatteryKWh < 0) {
+    throw new Error('Battery capacity cannot be negative.');
   }
 
   if (p.pvKW <= 0) {

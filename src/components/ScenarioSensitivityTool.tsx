@@ -31,15 +31,22 @@ export const ScenarioSensitivityTool: React.FC<ScenarioProps> = ({
           demandMultiplier: occ.mult,
         };
         const evaluation = evaluateAll(scenarioInputs, DEFAULT_PV, DEFAULT_LOAD);
+        const isViable = evaluation.bestBatteryFinanciallyWorthwhile;
+        const optCap = isViable ? evaluation.bestPositive.capacityKWh : 0;
+        const optCost = isViable ? evaluation.bestPositive.totalAnnualCostAUD : evaluation.baseline.totalAnnualCostAUD;
+        const netSavings = isViable ? evaluation.bestPositive.netBenefitAUD : 0;
+
         return {
           pvKW,
           occupancyLabel: occ.label,
           demandMult: occ.mult,
-          optimalCapacityKWh: evaluation.bestPositive.capacityKWh,
-          optimalTotalCost: evaluation.bestPositive.totalAnnualCostAUD,
+          optimalCapacityKWh: optCap,
+          optimalTotalCost: optCost,
           baselineCost: evaluation.baseline.totalAnnualCostAUD,
-          netSavings: evaluation.bestPositive.netBenefitAUD,
-          isViable: evaluation.bestPositive.netBenefitAUD >= -0.005,
+          netSavings,
+          isViable,
+          bestPositiveCapacityKWh: evaluation.bestPositive.capacityKWh,
+          bestPositiveNetBenefit: evaluation.bestPositive.netBenefitAUD,
         };
       });
     });
@@ -105,20 +112,20 @@ export const ScenarioSensitivityTool: React.FC<ScenarioProps> = ({
                           ? '#fef3c7'
                           : cell.isViable
                           ? '#f0fdf4'
-                          : '#fffdfa',
+                          : '#f8fafc',
                         border: 'none',
                         boxShadow: isCurrent ? 'inset 0 0 0 2px #475569' : 'none',
                         padding: '12px 10px',
                       }}
                     >
-                      <div style={{ fontSize: '1.125rem', fontWeight: 900, color: cell.isViable ? '#0f766e' : '#b45309' }}>
-                        {cell.optimalCapacityKWh.toFixed(1)} kWh
+                      <div style={{ fontSize: '1.125rem', fontWeight: 900, color: cell.isViable ? '#0f766e' : '#64748b' }}>
+                        {cell.optimalCapacityKWh === 0 ? '0.0 kWh' : `${cell.optimalCapacityKWh.toFixed(1)} kWh`}
                       </div>
                       <div style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: '2px' }}>
                         ${cell.optimalTotalCost.toFixed(0)}/yr total
                       </div>
-                      <div style={{ fontSize: '0.6875rem', marginTop: '2px', color: cell.isViable ? '#15803d' : '#9a3412', fontWeight: 600 }}>
-                        {cell.isViable ? `Saves +$${cell.netSavings.toFixed(0)}/yr` : `Costs -$${(-cell.netSavings).toFixed(0)}/yr vs 0 kWh`}
+                      <div style={{ fontSize: '0.6875rem', marginTop: '2px', color: cell.isViable ? '#15803d' : '#64748b', fontWeight: 600 }}>
+                        {cell.isViable ? `Saves +$${cell.netSavings.toFixed(0)}/yr` : `Solar-Only (${cell.bestPositiveCapacityKWh.toFixed(1)} kWh: -$${(-cell.bestPositiveNetBenefit).toFixed(0)}/yr)`}
                       </div>
                       {isCurrent && (
                         <span style={{ display: 'inline-block', marginTop: '4px', fontSize: '0.625rem', fontWeight: 800, background: '#475569', color: 'white', padding: '1px 6px', borderRadius: '4px' }}>

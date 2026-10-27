@@ -3,7 +3,8 @@ import { Compass, CheckCircle2, ArrowRight } from 'lucide-react';
 import { Result, Inputs } from '../engine/types';
 
 interface AdvisorProps {
-  optimalResult: Result;
+  economicOptimal: Result;
+  bestPositive: Result;
   selectedResult: Result;
   inputs: Inputs;
   results: Result[];
@@ -11,19 +12,23 @@ interface AdvisorProps {
 }
 
 export const CommercialAdvisor: React.FC<AdvisorProps> = ({
-  optimalResult,
+  economicOptimal,
+  bestPositive,
   selectedResult,
   inputs,
   results,
   onSelectCapacity,
 }) => {
-  const optCap = optimalResult.capacityKWh;
-  const optCost = optimalResult.totalAnnualCostAUD;
+  const optCap = economicOptimal.capacityKWh;
+  const optCost = economicOptimal.totalAnnualCostAUD;
+  const bestPosCap = bestPositive.capacityKWh;
   const selectedCap = selectedResult.capacityKWh;
 
-  // Base commercial benchmarks in the residential battery market
+  // Base commercial benchmarks in the residential battery market, including 0 kWh baseline
   const defaultCommercial = [
+    { name: 'Solar-Only Baseline (Zero Battery Capex)', capacity: 0.0 },
     { name: 'Modular Entry Unit (e.g. AlphaESS / Sungrow SBR050)', capacity: 5.0 },
+    { name: 'Least-Cost Positive Pack (Local Minimum U-Curve)', capacity: 7.5 },
     { name: 'Standard Residential Pack (e.g. BYD Battery-Box / GoodWe)', capacity: 10.0 },
     { name: 'Large Residential Pack (e.g. Tesla Powerwall 2)', capacity: 13.5 },
   ];
@@ -34,7 +39,7 @@ export const CommercialAdvisor: React.FC<AdvisorProps> = ({
     ? defaultCommercial
     : [
         ...defaultCommercial,
-        { name: 'Mathematical Optimal Pack (Thesis Minimum Cost)', capacity: optCap },
+        { name: 'Optimal Battery Pack', capacity: optCap },
       ];
 
   // Sort ascending by capacity
@@ -57,7 +62,7 @@ export const CommercialAdvisor: React.FC<AdvisorProps> = ({
             Decision Tool: Optimal Sizing &amp; Commercial Feasibility Advisor
           </h2>
           <p className="card-desc">
-            Translates the continuous mathematical optimization result ($E_b^*$) into engineering sizing advice, commercial battery options, and marginal screening rules (Report Section 8.1 &amp; Eq. 18).
+            Translates the mathematical optimization decision ($E_b^*$) into engineering sizing advice, commercial battery options, and marginal screening rules (Report Section 8.1 &amp; Eq. 18).
           </p>
         </div>
       </div>
@@ -67,10 +72,10 @@ export const CommercialAdvisor: React.FC<AdvisorProps> = ({
         <div style={{ background: 'var(--bg-surface-subtle)', borderRadius: 'var(--radius-md)', padding: '18px' }}>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px', flexWrap: 'wrap', gap: '6px' }}>
             <h3 style={{ fontSize: '0.875rem', fontWeight: 800, textTransform: 'uppercase', color: 'var(--text-muted)' }}>
-              Commercial Capacity Options vs. Optimal Size
+              Commercial Capacity Options vs. Sizing Optimum
             </h3>
             <span style={{ fontSize: '0.75rem', color: 'var(--text-muted)' }}>
-              Click any pack to simulate
+              Click any option to simulate
             </span>
           </div>
 
@@ -79,12 +84,13 @@ export const CommercialAdvisor: React.FC<AdvisorProps> = ({
               const res = results.find(r => Math.abs(r.capacityKWh - m.capacity) < 1e-6);
               const cost = res ? res.totalAnnualCostAUD : 0;
               const penalty = cost - optCost;
-              const isOpt = Math.abs(m.capacity - optCap) < 1e-6;
+              const isEconomicOpt = Math.abs(m.capacity - optCap) < 1e-6;
+              const isBestPositive = Math.abs(m.capacity - bestPosCap) < 1e-6 && !isEconomicOpt;
               const isSelected = Math.abs(m.capacity - selectedCap) < 1e-6;
 
               let cardClass = 'commercial-pack-card';
               if (isSelected) {
-                cardClass += isOpt ? ' is-active-opt' : ' is-active-whatif';
+                cardClass += isEconomicOpt ? ' is-active-opt' : ' is-active-whatif';
               }
 
               return (
@@ -104,12 +110,17 @@ export const CommercialAdvisor: React.FC<AdvisorProps> = ({
                 >
                   <div style={{ flex: '1 1 auto', marginRight: '16px' }}>
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-                      <span style={{ fontWeight: 900, fontSize: '1.0625rem', color: isOpt ? 'var(--color-optimal)' : 'var(--text-primary)' }}>
-                        {m.capacity.toFixed(1)} kWh
+                      <span style={{ fontWeight: 900, fontSize: '1.0625rem', color: isEconomicOpt ? 'var(--color-optimal)' : 'var(--text-primary)' }}>
+                        {m.capacity === 0 ? '0.0 kWh (Solar Only)' : `${m.capacity.toFixed(1)} kWh`}
                       </span>
-                      {isOpt && (
+                      {isEconomicOpt && (
                         <span className="table-tag table-tag-optimal" style={{ margin: 0 }}>
-                          ★ OPTIMAL SIZE
+                          ★ ECONOMIC OPTIMUM (Eb*)
+                        </span>
+                      )}
+                      {isBestPositive && (
+                        <span className="table-tag" style={{ margin: 0, background: '#e0f2fe', color: '#0369a1', borderColor: '#bae6fd' }}>
+                          LEAST-COST BATTERY
                         </span>
                       )}
                       {isSelected && (
@@ -129,8 +140,8 @@ export const CommercialAdvisor: React.FC<AdvisorProps> = ({
                       <div style={{ fontWeight: 800, fontSize: '0.9375rem', color: 'var(--text-primary)' }}>
                         ${cost.toFixed(2)}/yr
                       </div>
-                      <div style={{ fontSize: '0.6875rem', color: isOpt ? '#0f766e' : '#b45309', fontWeight: 700 }}>
-                        {isOpt ? 'Lowest expenditure' : `+$${penalty.toFixed(2)}/yr penalty`}
+                      <div style={{ fontSize: '0.6875rem', color: isEconomicOpt ? '#0f766e' : '#b45309', fontWeight: 700 }}>
+                        {isEconomicOpt ? 'Lowest expenditure' : `+$${penalty.toFixed(2)}/yr vs Eb*`}
                       </div>
                     </div>
 
@@ -141,7 +152,7 @@ export const CommercialAdvisor: React.FC<AdvisorProps> = ({
                           fontWeight: 800,
                           padding: '3px 8px',
                           borderRadius: '4px',
-                          background: isOpt ? '#0f766e' : '#d97706',
+                          background: isEconomicOpt ? '#0f766e' : '#d97706',
                           color: '#ffffff',
                           display: 'inline-flex',
                           alignItems: 'center',
@@ -163,7 +174,7 @@ export const CommercialAdvisor: React.FC<AdvisorProps> = ({
                           gap: '4px',
                         }}
                       >
-                        Select Pack
+                        Select Option
                         <ArrowRight size={12} />
                       </span>
                     )}
@@ -208,7 +219,8 @@ export const CommercialAdvisor: React.FC<AdvisorProps> = ({
           <div style={{ marginTop: '10px', fontSize: '0.75rem', lineHeight: 1.5, color: 'var(--text-muted)' }}>
             {isOperationalArbitragePositive ? (
               <span>
-                ✓ <strong>Operationally Viable:</strong> Shifting 1 kWh saves more on grid imports than foregone FiT revenue. However, annual battery capital depreciation ($/yr) must still be amortized across full annual cycling.
+                ✓ <strong>Operationally Viable (Eq. 18):</strong> Shifting 1 kWh saves more on grid imports ($0.32) than foregone FiT ($0.05).<br /><br />
+                <em>Note from Report Section 8.1:</em> This is an <strong>operational screening rule</strong>, not a full investment decision. Although operating arbitrage is positive (+${operationalMarginPerKWh.toFixed(2)}/kWh), annual bill savings ($645/yr) do not fully recover the annualized capex ($657/yr) under baseline tariffs, resulting in -$12.07/yr net benefit.
               </span>
             ) : (
               <span>

@@ -16,6 +16,7 @@ import { TrendingDown, Layers } from 'lucide-react';
 interface CostCurveChartProps {
   results: Result[];
   baseline: Result;
+  economicOptimal: Result;
   bestPositive: Result;
   selected: Result;
   onSelectCapacity: (kwh: number) => void;
@@ -24,12 +25,14 @@ interface CostCurveChartProps {
 export const CostCurveChart: React.FC<CostCurveChartProps> = ({
   results,
   baseline,
+  economicOptimal,
   bestPositive,
   selected,
   onSelectCapacity,
 }) => {
   const [viewMode, setViewMode] = useState<'totalCost' | 'netBenefit'>('totalCost');
   const [showBreakdown, setShowBreakdown] = useState<boolean>(true);
+  const isWorthwhile = bestPositive.netBenefitAUD >= -0.005;
 
   // Prepare chart data points
   const chartData = results.map(r => ({
@@ -38,14 +41,16 @@ export const CostCurveChart: React.FC<CostCurveChartProps> = ({
     gridCost: Number(r.gridCostAUD.toFixed(2)),
     ownerCost: Number(r.ownerCostAUD.toFixed(2)),
     netBenefit: Number(r.netBenefitAUD.toFixed(2)),
-    isOptimal: r.capacityKWh === bestPositive.capacityKWh,
+    isEconomicOpt: r.capacityKWh === economicOptimal.capacityKWh,
+    isBestPositive: r.capacityKWh === bestPositive.capacityKWh,
     isSelected: r.capacityKWh === selected.capacityKWh,
     isBaseline: r.capacityKWh === 0,
   }));
 
-  // Selected & Optimal points
+  // Selected & Target points
   const selectedPoint = chartData.find(d => Math.abs(d.capacity - selected.capacityKWh) < 1e-6);
-  const optimalPoint = chartData.find(d => Math.abs(d.capacity - bestPositive.capacityKWh) < 1e-6);
+  const economicOptPoint = chartData.find(d => Math.abs(d.capacity - economicOptimal.capacityKWh) < 1e-6);
+  const bestPositivePoint = chartData.find(d => Math.abs(d.capacity - bestPositive.capacityKWh) < 1e-6);
 
   const baselineCost = Number(baseline.totalAnnualCostAUD.toFixed(2));
 
@@ -60,11 +65,11 @@ export const CostCurveChart: React.FC<CostCurveChartProps> = ({
           <p className="card-desc">
             {viewMode === 'totalCost' ? (
               <>
-                Notice the distinct <strong>convex U-curve</strong>: costs are high at 5 kWh (${chartData.find(d => d.capacity === 5)?.totalCost}), lowest at {bestPositive.capacityKWh.toFixed(1)} kWh (${bestPositive.totalAnnualCostAUD.toFixed(2)}), and rise again at 10 kWh (${chartData.find(d => d.capacity === 10)?.totalCost}).
+                Total expenditure curve across candidate capacities (0.0 to 20.0 kWh). Physical batteries form a <strong>convex U-curve</strong> with a local minimum at <strong>{bestPositive.capacityKWh.toFixed(1)} kWh</strong> (${bestPositive.totalAnnualCostAUD.toFixed(2)}/yr). Under baseline prices, the solar-only reference ($695.65/yr) remains the overall economic minimum.
               </>
             ) : (
               <>
-                Net annual savings relative to solar-only ($695.65/yr). Negative values mean the battery costs more than having no battery.
+                Net annual financial savings relative to solar-only ($695.65/yr). Points below $0/yr cost more than having no battery.
               </>
             )}
           </p>
@@ -119,8 +124,15 @@ export const CostCurveChart: React.FC<CostCurveChartProps> = ({
 
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
             <span style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#0f766e', border: '2px solid #042f2e' }}></span>
-            <strong>Optimal:</strong> {bestPositive.capacityKWh.toFixed(1)} kWh (${bestPositive.totalAnnualCostAUD.toFixed(2)}/yr)
+            <strong>Economic Optimum (Eb*):</strong> {economicOptimal.capacityKWh.toFixed(1)} kWh (${economicOptimal.totalAnnualCostAUD.toFixed(2)}/yr)
           </span>
+
+          {!isWorthwhile && (
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ width: '12px', height: '12px', borderRadius: '50%', background: '#0284c7', border: '2px solid #0369a1' }}></span>
+              <strong>Least-Cost Battery:</strong> {bestPositive.capacityKWh.toFixed(1)} kWh (${bestPositive.totalAnnualCostAUD.toFixed(2)}/yr)
+            </span>
+          )}
 
           <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
             <span style={{ width: '16px', height: '2px', background: '#64748b', borderTop: '2px dashed #64748b' }}></span>
@@ -142,7 +154,7 @@ export const CostCurveChart: React.FC<CostCurveChartProps> = ({
         </div>
 
         <span style={{ color: 'var(--text-muted)' }}>
-          Tip: Click any point on the curve to inspect that battery capacity
+          Tip: Click any point on the curve to inspect that capacity
         </span>
       </div>
 
@@ -155,7 +167,7 @@ export const CostCurveChart: React.FC<CostCurveChartProps> = ({
             onClick={(state) => {
               if (state && state.activePayload && state.activePayload[0]) {
                 const cap = state.activePayload[0].payload.capacity;
-                if (cap > 0) onSelectCapacity(cap);
+                if (cap >= 0) onSelectCapacity(cap);
               }
             }}
           >
@@ -187,7 +199,8 @@ export const CostCurveChart: React.FC<CostCurveChartProps> = ({
               content={({ active, payload }) => {
                 if (active && payload && payload.length) {
                   const data = payload[0].payload;
-                  const isOpt = data.isOptimal;
+                  const isOpt = data.isEconomicOpt;
+                  const isBestPos = data.isBestPositive;
                   const isSel = data.isSelected;
                   const isBase = data.isBaseline;
 
@@ -195,10 +208,13 @@ export const CostCurveChart: React.FC<CostCurveChartProps> = ({
                     <div style={{ background: '#0f172a', color: '#f8fafc', padding: '12px 16px', borderRadius: '8px', fontSize: '12px', boxShadow: '0 10px 15px -3px rgba(0,0,0,0.3)', border: '1px solid #334155' }}>
                       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', marginBottom: '6px' }}>
                         <strong style={{ fontSize: '14px', color: '#38bdf8' }}>
-                          {isBase ? '0 kWh (Solar-Only Baseline)' : `${data.capacity.toFixed(1)} kWh Battery`}
+                          {isBase ? '0.0 kWh (Solar-Only Baseline)' : `${data.capacity.toFixed(1)} kWh Battery`}
                         </strong>
-                        {isOpt && <span style={{ background: '#0f766e', color: '#ccfbf1', padding: '1px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: 800 }}>OPTIMAL</span>}
-                        {isSel && <span style={{ background: '#d97706', color: '#fef3c7', padding: '1px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: 800 }}>SELECTED</span>}
+                        <div style={{ display: 'flex', gap: '4px' }}>
+                          {isOpt && <span style={{ background: '#0f766e', color: '#ccfbf1', padding: '1px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: 800 }}>OPTIMUM (Eb*)</span>}
+                          {isBestPos && !isOpt && <span style={{ background: '#0284c7', color: '#e0f2fe', padding: '1px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: 800 }}>LEAST-COST BATTERY</span>}
+                          {isSel && <span style={{ background: '#d97706', color: '#fef3c7', padding: '1px 6px', borderRadius: '4px', fontSize: '10px', fontWeight: 800 }}>ACTIVE</span>}
+                        </div>
                       </div>
 
                       <div style={{ borderTop: '1px solid #334155', paddingTop: '6px', lineHeight: 1.6 }}>
@@ -208,9 +224,9 @@ export const CostCurveChart: React.FC<CostCurveChartProps> = ({
                         <div style={{ marginTop: '4px', color: data.netBenefit >= 0 ? '#4ade80' : '#f87171' }}>
                           <strong>Savings vs Baseline:</strong> {data.netBenefit >= 0 ? `+$${data.netBenefit.toFixed(2)}/yr` : `-$${(-data.netBenefit).toFixed(2)}/yr`}
                         </div>
-                        {!isOpt && !isBase && (
+                        {!isOpt && (
                           <div style={{ color: '#fbbf24', fontSize: '11px', marginTop: '2px' }}>
-                            Extra cost vs optimal ({bestPositive.capacityKWh.toFixed(1)} kWh): +${(data.totalCost - bestPositive.totalAnnualCostAUD).toFixed(2)}/yr
+                            Cost gap vs Eb* ({economicOptimal.capacityKWh.toFixed(1)} kWh): +${(data.totalCost - economicOptimal.totalAnnualCostAUD).toFixed(2)}/yr
                           </div>
                         )}
                       </div>
@@ -290,21 +306,40 @@ export const CostCurveChart: React.FC<CostCurveChartProps> = ({
               isAnimationActive={false}
             />
 
-            {/* Optimal Dot Marker */}
-            {optimalPoint && (
+            {/* Economic Optimum Dot Marker */}
+            {economicOptPoint && (
               <ReferenceDot
-                x={optimalPoint.capacity}
-                y={viewMode === 'totalCost' ? optimalPoint.totalCost : optimalPoint.netBenefit}
+                x={economicOptPoint.capacity}
+                y={viewMode === 'totalCost' ? economicOptPoint.totalCost : economicOptPoint.netBenefit}
                 r={8}
                 fill="#0f766e"
                 stroke="#ffffff"
                 strokeWidth={3}
                 label={{
-                  value: `BEST: ${bestPositive.capacityKWh.toFixed(1)} kWh`,
+                  value: `Eb*: ${economicOptimal.capacityKWh.toFixed(1)} kWh`,
                   position: 'top',
                   fill: '#0f766e',
                   fontSize: 11,
                   fontWeight: 800,
+                }}
+              />
+            )}
+
+            {/* Least-Cost Positive Battery Dot Marker if different from economic optimum */}
+            {!isWorthwhile && bestPositivePoint && (
+              <ReferenceDot
+                x={bestPositivePoint.capacity}
+                y={viewMode === 'totalCost' ? bestPositivePoint.totalCost : bestPositivePoint.netBenefit}
+                r={7}
+                fill="#0284c7"
+                stroke="#ffffff"
+                strokeWidth={2.5}
+                label={{
+                  value: `Least-Cost Battery: ${bestPositive.capacityKWh.toFixed(1)} kWh`,
+                  position: 'bottom',
+                  fill: '#0369a1',
+                  fontSize: 10,
+                  fontWeight: 700,
                 }}
               />
             )}

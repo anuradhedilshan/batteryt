@@ -221,49 +221,69 @@ export function evaluateAll(
   const series = scaleSeries(referencePV, referenceLoad, inputs);
 
   // Candidate battery capacities: 0.0 (solar-only reference baseline)
-  // and realistic marketable residential battery capacities (3.0 to 20.0 kWh in 0.5 kWh steps).
-  // Excludes sub-residential toy capacities (< 3.0 kWh) so suggestions reflect real home energy storage systems.
-  const capacities = [
-    0,
-    ...Array.from({ length: 35 }, (_, i) => 3.0 + i * 0.5),
-  ];
+  // and candidate storage capacities (0.5 to 20.0 kWh in 0.5 kWh steps).
+  // Total 41 tested candidate sizes (Report Section 4.5 & Section 8.2).
+  const capacities = Array.from({ length: 41 }, (_, i) => i * 0.5);
   const results = capacities.map(c => simulateCapacity(c, inputs, series, false));
   const baseline = results[0];
 
   for (const r of results) {
     r.netBenefitAUD = baseline.totalAnnualCostAUD - r.totalAnnualCostAUD;
+    if (r.capacityKWh > 0 && r.netCapexAUD > 0) {
+      const grossBillSavings = baseline.gridCostAUD - r.gridCostAUD;
+      const netAnnualOperatingSavings = grossBillSavings - r.annualOMAUD;
+      r.simplePaybackYears = netAnnualOperatingSavings > 0 ? r.netCapexAUD / netAnnualOperatingSavings : null;
+    } else {
+      r.simplePaybackYears = null;
+    }
   }
 
-  // Only capacities >= 3.0 kWh are eligible for realistic residential battery recommendation
-  const eligible = results.filter(r => r.capacityKWh >= 3.0);
-  const bestPositive = eligible.reduce((best, candidate) => {
+  // Find least-cost positive battery candidate among physical storage options (Eb > 0)
+  const positiveCandidates = results.filter(r => r.capacityKWh > 0);
+  const bestPositive = positiveCandidates.reduce((best, candidate) => {
     // If tie within EPS, choose the smaller battery size
     if (Math.abs(candidate.totalAnnualCostAUD - best.totalAnnualCostAUD) < EPS) {
       return candidate.capacityKWh < best.capacityKWh ? candidate : best;
     }
     return candidate.totalAnnualCostAUD < best.totalAnnualCostAUD ? candidate : best;
-  }, eligible[0]);
+  }, positiveCandidates[0]);
 
-  // Find user selected candidate
-  const selectedSummary = eligible.find(
+  // Financial viability check: does the best battery beat solar alone?
+  const bestBatteryFinanciallyWorthwhile = bestPositive.netBenefitAUD >= -0.005;
+
+  // Formal Mathematical Optimum Eb* (Report Section 4.5, Eq. 13 & Section 7.2):
+  // Eb* = arg min_{Eb in B} { C_grid(Eb) + AEC(Eb) }
+  // When no battery beats solar alone, Eb* = 0 kWh (baseline is the cost-minimizing choice).
+  const economicOptimal = bestBatteryFinanciallyWorthwhile ? bestPositive : baseline;
+
+  // Find user selected candidate across all candidate capacities (including 0 kWh)
+  const selectedSummary = results.find(
     r => Math.abs(r.capacityKWh - inputs.selectedBatteryKWh) < 1e-6
   );
   if (!selectedSummary) {
-    throw new Error(`Selected battery ${inputs.selectedBatteryKWh} kWh is outside realistic residential candidate range (3.0–20.0 kWh in 0.5 kWh steps).`);
+    throw new Error(`Selected battery ${inputs.selectedBatteryKWh} kWh is outside candidate range (0.0–20.0 kWh in 0.5 kWh steps).`);
   }
 
   // Run detailed hourly simulation for the selected battery
   const selectedDetail = simulateCapacity(selectedSummary.capacityKWh, inputs, series, true);
   selectedDetail.netBenefitAUD = baseline.totalAnnualCostAUD - selectedDetail.totalAnnualCostAUD;
+  if (selectedDetail.capacityKWh > 0 && selectedDetail.netCapexAUD > 0) {
+    const grossBillSavings = baseline.gridCostAUD - selectedDetail.gridCostAUD;
+    const netAnnualOperatingSavings = grossBillSavings - selectedDetail.annualOMAUD;
+    selectedDetail.simplePaybackYears = netAnnualOperatingSavings > 0 ? selectedDetail.netCapexAUD / netAnnualOperatingSavings : null;
+  } else {
+    selectedDetail.simplePaybackYears = null;
+  }
 
   return {
     series,
     results,
     baseline,
+    economicOptimal,
     bestPositive,
     selected: selectedDetail,
-    selectedPremiumAUD: selectedDetail.totalAnnualCostAUD - bestPositive.totalAnnualCostAUD,
-    bestBatteryFinanciallyWorthwhile: bestPositive.netBenefitAUD >= -0.005,
+    selectedPremiumAUD: selectedDetail.totalAnnualCostAUD - economicOptimal.totalAnnualCostAUD,
+    bestBatteryFinanciallyWorthwhile,
     sourceNote: '8,760 hourly simulation data',
   };
 }

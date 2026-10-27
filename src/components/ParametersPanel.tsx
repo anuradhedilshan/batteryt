@@ -7,6 +7,8 @@ interface ParamsProps {
   onChange: (newInputs: Inputs) => void;
   preset: string;
   onPresetChange: (presetKey: string) => void;
+  baseline: Result;
+  economicOptimal: Result;
   bestPositive: Result;
   autoFollowOptimal: boolean;
   onToggleAutoFollow: (auto: boolean) => void;
@@ -17,6 +19,8 @@ export const ParametersPanel: React.FC<ParamsProps> = ({
   onChange,
   preset,
   onPresetChange,
+  baseline,
+  economicOptimal,
   bestPositive,
   autoFollowOptimal,
   onToggleAutoFollow,
@@ -51,18 +55,22 @@ export const ParametersPanel: React.FC<ParamsProps> = ({
         {/* Suggested Optimal Size Callout in Sidebar */}
         <div style={{ marginTop: '14px', background: 'rgba(15, 118, 110, 0.35)', border: 'none', borderRadius: '8px', padding: '12px 14px' }}>
           <div style={{ fontSize: '0.6875rem', textTransform: 'uppercase', color: '#99f6e4', fontWeight: 800, letterSpacing: '0.05em' }}>
-            Current Model Suggestion
+            {economicOptimal.capacityKWh > 0 ? 'Optimal Battery Recommendation' : 'Optimal Sizing Decision (Eb*)'}
           </div>
           <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginTop: '2px' }}>
             <span style={{ fontSize: '1.25rem', fontWeight: 900, color: '#f0fdfa' }}>
-              {bestPositive.capacityKWh.toFixed(1)} kWh Battery
+              {economicOptimal.capacityKWh === 0 ? '0.0 kWh (Solar-Only)' : `${economicOptimal.capacityKWh.toFixed(1)} kWh Battery`}
             </span>
             <span style={{ fontSize: '0.75rem', color: '#5eead4', fontWeight: 700 }}>
-              ${bestPositive.totalAnnualCostAUD.toFixed(2)}/yr
+              ${economicOptimal.totalAnnualCostAUD.toFixed(2)}/yr
             </span>
           </div>
           <div style={{ fontSize: '0.6875rem', color: '#ccfbf1', marginTop: '2px' }}>
-            Minimizes total annual electricity bill + annualized ownership capex.
+            {economicOptimal.capacityKWh > 0 ? (
+              `Minimizes annual cost. Saves +$${economicOptimal.netBenefitAUD.toFixed(2)}/yr vs solar alone.`
+            ) : (
+              `Solar-Only is cheapest ($${baseline.totalAnnualCostAUD.toFixed(2)}/yr). Least-cost battery: ${bestPositive.capacityKWh.toFixed(1)} kWh ($${bestPositive.totalAnnualCostAUD.toFixed(2)}/yr).`
+            )}
           </div>
         </div>
 
@@ -384,7 +392,7 @@ export const ParametersPanel: React.FC<ParamsProps> = ({
                 </div>
                 <input
                   type="range"
-                  min={3.0}
+                  min={0.0}
                   max={20.0}
                   step={0.5}
                   value={inputs.selectedBatteryKWh}
