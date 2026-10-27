@@ -213,18 +213,33 @@ def evaluate(pv, load, t_imp, t_fit, bat: Battery | None, gross_capex, *,
     subsidy = subsidy_aud(bat.usable, install_date, stc_price, eligible)
     net_capex = gross_capex - subsidy
     om = om_frac * gross_capex
-    npv, saving_y1 = -net_capex, 0.0
-    for y in range(1, years + 1):
-        by = bat.faded((1 - fade_per_year) ** (y - 1))
-        res = dispatch(pv, load, by, t_imp, t_fit) if dispatch else simulate(pv, load, by, dt)
-        esc = (1 + escalation) ** (y - 1)
-        saving = (base_cost - grid_cost(res, t_imp, t_fit)) * esc
+    horizon = max(years, 30)          # look past the life to find the discounted payback year
+    cache, cum, npv_at_life, saving_y1 = {}, -net_capex, 0.0, 0.0
+    pv_savings = annuity = 0.0
+    dpb = None
+    for y in range(1, horizon + 1):
+        remaining = round((1 - fade_per_year) ** (y - 1), 6)
+        if remaining not in cache:    # identical capacity -> identical simulation, so reuse it
+            by = bat.faded(remaining)
+            res = dispatch(pv, load, by, t_imp, t_fit) if dispatch else simulate(pv, load, by, dt)
+            cache[remaining] = base_cost - grid_cost(res, t_imp, t_fit)
+        saving = cache[remaining] * (1 + escalation) ** (y - 1)
         if y == 1:
             saving_y1 = saving
-        npv += (saving - om) / (1 + r) ** y
+        cum += (saving - om) / (1 + r) ** y
+        if y <= years:
+            pv_savings += saving / (1 + r) ** y
+            annuity += 1 / (1 + r) ** y
+        if dpb is None and cum >= 0:
+            dpb = y
+        if y == years:
+            npv_at_life = cum
     net_annual_y1 = saving_y1 - om
-    return dict(npv=npv, equiv_annual=npv * crf(r, years), net_capex=net_capex, subsidy=subsidy,
-                saving_y1=saving_y1, usable=bat.usable,
+    # price at which NPV over the chosen life is exactly 0 (O&M is a % of price, subsidy is not)
+    break_even_gross = (subsidy + pv_savings) / (1 + om_frac * annuity)
+    return dict(npv=npv_at_life, equiv_annual=npv_at_life * crf(r, years), net_capex=net_capex,
+                subsidy=subsidy, saving_y1=saving_y1, usable=bat.usable, gross_capex=gross_capex,
+                break_even_gross=break_even_gross, discounted_payback_year=dpb,
                 payback_years=net_capex / net_annual_y1 if net_annual_y1 > 0 else float("inf"))
 
 
@@ -240,6 +255,38 @@ def rank_products(pv, load, t_imp, t_fit, products, **econ):
 # --------------------------------------------------------------------------- #
 # 6. Self-tests  (run: python battery_model.py)
 # --------------------------------------------------------------------------- #
+def sanity_check_inputs(t_imp, t_fit, pv, load):
+    """Catches the bugs that silently make every battery lose. Returns a list of warnings."""
+    w = []
+    ti, tf = np.asarray(t_imp, float), np.asarray(t_fit, float)
+    if ti.max() > 2.0 or tf.max() > 2.0:
+        w.append("Tariff above 2 AUD/kWh: probably CENTS entered as dollars. Use AUD/kWh (0.35 not 35).")
+    if tf.max() >= ti.min():
+        w.append("Feed-in tariff >= import tariff: a battery can never pay. Check the numbers/units.")
+    if np.sum(pv) < np.sum(load) * 0.3:
+        w.append("PV is a small share of load: little surplus to store. Check PV units (kWh per interval).")
+    if np.mean(np.asarray(pv)) > 20 or np.mean(np.asarray(load)) > 20:
+        w.append("Average hourly energy is huge: probably W or Wh, not kWh.")
+    return w
+
+
+def explain(result, name, usable_kwh, avg_t_imp, avg_t_fit, eta_c=0.95, eta_d=0.95):
+    """Plain-language reason for a battery decision. Show this in the UI instead of just 'solar only'."""
+    gain_per_kwh = eta_d * avg_t_imp - avg_t_fit / eta_c       # AUD per usable kWh cycled
+    lines = [f"{name}: NPV {result['npv']:+,.0f} AUD over the chosen life."]
+    lines.append(f"Each kWh moved through the battery earns about {gain_per_kwh:.3f} AUD "
+                 f"(avoided import {eta_d * avg_t_imp:.3f} minus lost export income {avg_t_fit / eta_c:.3f}).")
+    lines.append(f"Year-1 bill saving {result['saving_y1']:,.0f} AUD; net price after subsidy "
+                 f"{result['net_capex']:,.0f} AUD (subsidy {result['subsidy']:,.0f}).")
+    if result["npv"] < 0:
+        cut = 100 * (1 - result["break_even_gross"] / result["gross_capex"])
+        lines.append(f"It would break even if the installed price were {result['break_even_gross']:,.0f} AUD "
+                     f"({cut:.0f}% lower)." )
+    dpb = result["discounted_payback_year"]
+    lines.append("Pays back (discounted) in year " + str(dpb) if dpb else "Does not pay back within 30 years.")
+    return " ".join(lines)
+
+
 def _synthetic_year(seed=42):
     """Test data only. NOT thesis data."""
     rng = np.random.default_rng(seed)
@@ -319,6 +366,15 @@ def run_tests():
     for L in (10, 15):
         top = rank_products(pv, load, t_imp, t_fit, prods, years=L)[0]
         print(f"INFO life={L} y, flat tariff, synthetic data, hypothetical prices -> best: {top['name']} (NPV {top['npv']:.0f})")
+    # 9. break-even price really gives NPV = 0, and unit mistakes are caught
+    b10 = Battery.from_usable(10, 5)
+    e = evaluate(pv, load, t_imp, t_fit, b10, 8000, years=10)
+    e0 = evaluate(pv, load, t_imp, t_fit, b10, e["break_even_gross"], years=10)
+    assert abs(e0["npv"]) < 1e-6, e0["npv"]
+    assert sanity_check_inputs(35, 5, pv, load), "cents-as-dollars should be flagged"
+    assert not sanity_check_inputs(0.35, 0.05, pv, load)
+    print("PASS break-even price gives NPV = 0; unit sanity check works")
+    print("EXAMPLE:", explain(e, "10 kWh (synthetic data, hypothetical price)", 10, t_imp, t_fit))
     print("ALL TESTS PASSED")
 
 

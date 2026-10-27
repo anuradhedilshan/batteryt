@@ -93,6 +93,8 @@ export interface Result {
   equivalentAnnualBenefitAUD: number;
   year1BillSavingsAUD: number;
   simplePaybackYears?: number | null;
+  breakEvenGrossAUD?: number;
+  discountedPaybackYear?: number | null;
   annualCashFlows?: AnnualCashFlow[];
   hourly?: Hour[];
 }
@@ -110,6 +112,8 @@ export interface ProductEvaluation {
   equivalentAnnualBenefitAUD: number;
   year1BillSavingsAUD: number;
   simplePaybackYears: number | null;
+  breakEvenGrossAUD: number;
+  discountedPaybackYear: number | null;
   selfConsumptionPct: number;
   selfSufficiencyPct: number;
   equivalentCycles: number;

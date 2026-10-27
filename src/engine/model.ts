@@ -292,6 +292,8 @@ export function evaluateLifetimeNPV(
   subsidy: number;
   savingY1: number;
   paybackYears: number | null;
+  breakEvenGrossAUD: number;
+  discountedPaybackYear: number | null;
   annualCashFlows: AnnualCashFlow[];
 } {
   const years = p.lifeYears;
@@ -311,24 +313,33 @@ export function evaluateLifetimeNPV(
       subsidy: 0.0,
       savingY1: 0.0,
       paybackYears: null,
+      breakEvenGrossAUD: 0.0,
+      discountedPaybackYear: null,
       annualCashFlows: [],
     };
   }
 
-  let npv = -netCapex;
-  let savingY1 = 0;
+  const horizon = Math.max(years, 30);
+  const cache = new Map<number, number>();
+  let cum = -netCapex;
+  let npvAtLife = 0.0;
+  let savingY1 = 0.0;
+  let pvSavings = 0.0;
+  let annuity = 0.0;
+  let dpb: number | null = null;
   const annualCashFlows: AnnualCashFlow[] = [];
-  let firstYearGridCost: number | null = null;
 
-  for (let y = 1; y <= years; y++) {
-    const fadeFactor = Math.pow(1 - fadePerYear, y - 1);
+  for (let y = 1; y <= horizon; y++) {
+    const remaining = Math.round(Math.pow(1 - fadePerYear, y - 1) * 1e6) / 1e6;
+    let baseMinusYearCost: number;
     let yearGridCost: number;
 
-    if (fadePerYear === 0 && firstYearGridCost !== null) {
-      yearGridCost = firstYearGridCost;
+    if (cache.has(remaining)) {
+      baseMinusYearCost = cache.get(remaining)!;
+      yearGridCost = baseGridCost - baseMinusYearCost;
     } else {
-      const by = bat.faded(fadeFactor);
-      const simY = simulateBatteryTimeSeries(pv, load, by, dt);
+      const by = bat.faded(remaining);
+      const simY = simulateBatteryTimeSeries(pv, load, by, dt, undefined, true, 1e-6, 50, false, p.exportLimitKW);
       let imp = 0;
       let exp = 0;
       for (let t = 0; t < simY.imp.length; t++) {
@@ -336,42 +347,56 @@ export function evaluateLifetimeNPV(
         exp += simY.exp[t];
       }
       yearGridCost = imp * p.importAUDPerKWh - exp * p.feedInAUDPerKWh;
-      if (y === 1) {
-        firstYearGridCost = yearGridCost;
-      }
+      baseMinusYearCost = baseGridCost - yearGridCost;
+      cache.set(remaining, baseMinusYearCost);
     }
 
     const escFactor = Math.pow(1 + escalation, y - 1);
-    const saving = (baseGridCost - yearGridCost) * escFactor;
+    const saving = baseMinusYearCost * escFactor;
     if (y === 1) {
       savingY1 = saving;
     }
-    const netCashFlow = saving - omAUD;
-    const discountedCashFlow = netCashFlow / Math.pow(1 + r, y);
-    npv += discountedCashFlow;
+    const discount = Math.pow(1 + r, y);
+    cum += (saving - omAUD) / discount;
+    if (y <= years) {
+      pvSavings += saving / discount;
+      annuity += 1 / discount;
+    }
+    if (dpb === null && cum >= 0) {
+      dpb = y;
+    }
+    if (y === years) {
+      npvAtLife = cum;
+    }
 
-    annualCashFlows.push({
-      year: y,
-      fadedCapacityKWh: bat.usable * fadeFactor,
-      gridCostAUD: yearGridCost,
-      savingAUD: saving,
-      omAUD: omAUD,
-      netCashFlowAUD: netCashFlow,
-      discountedCashFlowAUD: discountedCashFlow,
-    });
+    if (y <= years) {
+      const netCashFlow = saving - omAUD;
+      const discountedCashFlow = netCashFlow / discount;
+      annualCashFlows.push({
+        year: y,
+        fadedCapacityKWh: bat.usable * remaining,
+        gridCostAUD: yearGridCost,
+        savingAUD: saving,
+        omAUD: omAUD,
+        netCashFlowAUD: netCashFlow,
+        discountedCashFlowAUD: discountedCashFlow,
+      });
+    }
   }
 
   const netAnnualY1 = savingY1 - omAUD;
   const paybackYears = netAnnualY1 > 0 ? netCapex / netAnnualY1 : null;
-  const equivAnnual = npv * crf;
+  const breakEvenGrossAUD = (subsidy + pvSavings) / (1 + omFrac * annuity);
 
   return {
-    npv,
-    equivAnnual,
+    npv: npvAtLife,
+    equivAnnual: npvAtLife * crf,
     netCapex,
     subsidy,
     savingY1,
     paybackYears,
+    breakEvenGrossAUD,
+    discountedPaybackYear: dpb,
     annualCashFlows,
   };
 }
@@ -423,7 +448,7 @@ export function simulateCapacity(
 
   const grossCapex = capacityKWh > 0 ? p.fixedCapexAUD + capacityKWh * p.variableCapexAUDPerKWh : 0;
   let subsidy: number;
-  if (p.useCheaperHomeBatteriesProgram) {
+  if (p.useCheaperHomeBatteriesProgram ?? true) {
     const usableKWh = bat ? bat.usable : 0;
     const sub = calculateSubsidy(
       usableKWh,
@@ -490,6 +515,8 @@ export function simulateCapacity(
     equivalentAnnualBenefitAUD: lifetime.equivAnnual,
     year1BillSavingsAUD: lifetime.savingY1,
     simplePaybackYears: lifetime.paybackYears,
+    breakEvenGrossAUD: lifetime.breakEvenGrossAUD,
+    discountedPaybackYear: lifetime.discountedPaybackYear,
     annualCashFlows: lifetime.annualCashFlows,
     hourly: sim.hourly,
   };
@@ -599,6 +626,8 @@ export function evaluateProduct(
     equivalentAnnualBenefitAUD: lifetime.equivAnnual,
     year1BillSavingsAUD: lifetime.savingY1,
     simplePaybackYears: lifetime.paybackYears,
+    breakEvenGrossAUD: lifetime.breakEvenGrossAUD,
+    discountedPaybackYear: lifetime.discountedPaybackYear,
     annualCashFlows: lifetime.annualCashFlows,
     hourly: sim.hourly,
   };
@@ -616,6 +645,8 @@ export function evaluateProduct(
     equivalentAnnualBenefitAUD: lifetime.equivAnnual,
     year1BillSavingsAUD: lifetime.savingY1,
     simplePaybackYears: lifetime.paybackYears,
+    breakEvenGrossAUD: lifetime.breakEvenGrossAUD,
+    discountedPaybackYear: lifetime.discountedPaybackYear,
     selfConsumptionPct,
     selfSufficiencyPct,
     equivalentCycles,
