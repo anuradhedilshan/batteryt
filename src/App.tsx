@@ -23,6 +23,8 @@ import { AnnualAccounting } from './components/AnnualAccounting';
 import { VerificationTool } from './components/VerificationTool';
 import { CSVUploadModal } from './components/CSVUploadModal';
 import { ResearchNotes } from './components/ResearchNotes';
+import { sanityCheckInputs, InputSanityWarning } from './engine/validation';
+import { SanityWarningsBanner } from './components/SanityWarningsBanner';
 
 const DEFAULTS: Inputs = {
   selectedBatteryKWh: 0, // Defaults to the economic optimum (0 kWh Solar-Only under report baseline)
@@ -41,6 +43,10 @@ const DEFAULTS: Inputs = {
   annualDiscountRatePct: 6,
   lifeYears: 10,
   annualOMPercentGross: 1.0,
+  useCheaperHomeBatteriesProgram: true,
+  installDate: '2026-11-01',
+  stcPriceAUD: 37.0,
+  subsidyEligible: true,
 };
 
 export const App: React.FC = () => {
@@ -64,6 +70,35 @@ export const App: React.FC = () => {
 
   const [isUploadOpen, setIsUploadOpen] = useState<boolean>(false);
   const [actionToast, setActionToast] = useState<string | null>(null);
+  const [confirmedBlockingWarnings, setConfirmedBlockingWarnings] = useState<boolean>(false);
+
+  // Sanity check inputs right after loading data / parameter changes (Part B)
+  const sanityWarnings = useMemo<InputSanityWarning[]>(() => {
+    return sanityCheckInputs(inputs.importAUDPerKWh, inputs.feedInAUDPerKWh, profile.pv, profile.load);
+  }, [inputs.importAUDPerKWh, inputs.feedInAUDPerKWh, profile.pv, profile.load]);
+
+  const hasUnconfirmedBlocking = useMemo(() => {
+    return sanityWarnings.some(w => w.isBlocking) && !confirmedBlockingWarnings;
+  }, [sanityWarnings, confirmedBlockingWarnings]);
+
+  const handleFixTariffCents = () => {
+    setInputs(prev => ({
+      ...prev,
+      importAUDPerKWh: prev.importAUDPerKWh > 2.0 ? prev.importAUDPerKWh / 100 : prev.importAUDPerKWh,
+      feedInAUDPerKWh: prev.feedInAUDPerKWh > 2.0 ? prev.feedInAUDPerKWh / 100 : prev.feedInAUDPerKWh,
+    }));
+    setConfirmedBlockingWarnings(true);
+    setActionToast('Converted tariffs from cents to AUD/kWh');
+  };
+
+  const handleFixFiT = () => {
+    setInputs(prev => ({
+      ...prev,
+      feedInAUDPerKWh: Math.min(0.05, Number((prev.importAUDPerKWh * 0.2).toFixed(4))),
+    }));
+    setConfirmedBlockingWarnings(true);
+    setActionToast('Reset feed-in tariff to standard export rate');
+  };
 
   useEffect(() => {
     if (actionToast) {
@@ -172,6 +207,7 @@ export const App: React.FC = () => {
     setInputs(DEFAULTS);
     setPreset('report');
     setAutoFollowOptimal(true);
+    setConfirmedBlockingWarnings(false);
   };
 
   const handleUploadSuccess = (imported: ImportedProfile, refPV: number) => {
@@ -185,6 +221,7 @@ export const App: React.FC = () => {
       },
     });
     setInputs(prev => ({ ...prev, pvReferenceKW: refPV }));
+    setConfirmedBlockingWarnings(false);
   };
 
   const handleUseDefault = () => {
@@ -197,6 +234,7 @@ export const App: React.FC = () => {
       },
     });
     setInputs(prev => ({ ...prev, pvReferenceKW: 6.6 }));
+    setConfirmedBlockingWarnings(false);
   };
 
   const handleDownloadSample = () => {
@@ -309,7 +347,37 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {evaluationResult.ok && (
+        {/* Sanity Check Warnings (Part B) */}
+        <SanityWarningsBanner
+          warnings={sanityWarnings}
+          isBlockingConfirmed={confirmedBlockingWarnings}
+          onConfirmBlocking={() => setConfirmedBlockingWarnings(true)}
+          onFixTariffCents={handleFixTariffCents}
+          onFixFiT={handleFixFiT}
+        />
+
+        {hasUnconfirmedBlocking && (
+          <div
+            className="card"
+            style={{
+              padding: '36px',
+              textAlign: 'center',
+              margin: '20px 0',
+              border: '2px dashed #fca5a5',
+              background: '#fff5f5',
+            }}
+          >
+            <h3 style={{ color: '#b91c1c', marginBottom: '8px', fontSize: '1.25rem' }}>
+              Simulation Results Suspended
+            </h3>
+            <p style={{ color: '#7f1d1d', maxWidth: '620px', margin: '0 auto 16px auto', fontSize: '0.9375rem', lineHeight: 1.5 }}>
+              Blocking input warnings were detected above (e.g. tariffs entered in cents or feed-in tariff exceeding import tariff).
+              Please confirm the unusual assumptions or use the auto-fix button above to resume calculation.
+            </p>
+          </div>
+        )}
+
+        {evaluationResult.ok && !hasUnconfirmedBlocking && (
           <>
             {/* TAB 1: OPTIMAL SIZING & DECISION AID */}
             {activeTab === 'optimal-sizer' && (

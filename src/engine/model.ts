@@ -448,7 +448,7 @@ export function simulateCapacity(
 
   const grossCapex = capacityKWh > 0 ? p.fixedCapexAUD + capacityKWh * p.variableCapexAUDPerKWh : 0;
   let subsidy: number;
-  if (p.useCheaperHomeBatteriesProgram ?? true) {
+  if (p.useCheaperHomeBatteriesProgram) {
     const usableKWh = bat ? bat.usable : 0;
     const sub = calculateSubsidy(
       usableKWh,
