@@ -10,6 +10,7 @@ interface HeaderProps {
   onOpenUpload: () => void;
   onExportComparison: () => void;
   onExportHourly: () => void;
+  onExportAssumptionsJSON?: () => void;
   onDownloadSample: () => void;
   checksPass: boolean;
   activeTab: ActiveTab;
@@ -22,6 +23,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenUpload,
   onExportComparison,
   onExportHourly,
+  onExportAssumptionsJSON,
   onDownloadSample,
   checksPass,
   activeTab,
@@ -85,6 +87,12 @@ export const Header: React.FC<HeaderProps> = ({
             <Download size={14} />
             Export Trace
           </button>
+          {onExportAssumptionsJSON && (
+            <button className="btn btn-secondary btn-sm" onClick={onExportAssumptionsJSON} title="Export all assumptions and model parameters as JSON for full reproducibility">
+              <Download size={14} />
+              Export Assumptions
+            </button>
+          )}
           <button className="btn btn-secondary btn-sm" onClick={onReset} title="Reset all input parameters to default thesis report values">
             <RefreshCw size={14} />
             Reset

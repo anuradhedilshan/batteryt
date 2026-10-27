@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { Inputs, EvaluationOutput, ProfileMetadata } from './engine/types';
 import { evaluateAll } from './engine/model';
 import { DEFAULT_PV, DEFAULT_LOAD } from './data/defaultProfile';
-import { generateCapacityComparisonCSV, generateHourlyTraceCSV, downloadCSV, ImportedProfile } from './engine/csv';
+import { generateCapacityComparisonCSV, generateHourlyTraceCSV, exportAssumptionsJSON, downloadCSV, ImportedProfile } from './engine/csv';
 import { runFullVerificationSuite } from './engine/verification';
 import { computeTariffSensitivityMatrix } from './engine/sensitivity';
 
@@ -18,6 +18,7 @@ import { SensitivityMatrixTool } from './components/SensitivityMatrixTool';
 import { ScenarioSensitivityTool } from './components/ScenarioSensitivityTool';
 import { CapacityComparisonTable } from './components/CapacityComparisonTable';
 import { HourlyExplorer } from './components/HourlyExplorer';
+import { DispatchComparisonTool } from './components/DispatchComparisonTool';
 import { AnnualAccounting } from './components/AnnualAccounting';
 import { VerificationTool } from './components/VerificationTool';
 import { CSVUploadModal } from './components/CSVUploadModal';
@@ -227,6 +228,19 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleExportAssumptions = () => {
+    if (evaluationResult.ok) {
+      exportAssumptionsJSON(inputs, {
+        source: profile.metadata.source === 'illustration' ? 'Illustrative reconstructed profile' : 'User uploaded CSV',
+        filename: profile.metadata.filename,
+        selectedBatteryKWh: evaluationResult.data.selected.capacityKWh,
+        economicOptimalKWh: evaluationResult.data.economicOptimal.capacityKWh,
+        optimalCostAUD: evaluationResult.data.economicOptimal.totalAnnualCostAUD,
+        baselineCostAUD: evaluationResult.data.baseline.totalAnnualCostAUD,
+      });
+    }
+  };
+
   const checksPass = verificationOutput ? verificationOutput.allPassed : false;
   const isSelectedDifferentFromOptimal = evaluationResult.ok &&
     Math.abs(evaluationResult.data.selected.capacityKWh - evaluationResult.data.economicOptimal.capacityKWh) > 1e-6;
@@ -254,6 +268,7 @@ export const App: React.FC = () => {
           onOpenUpload={() => setIsUploadOpen(true)}
           onExportComparison={handleExportComparison}
           onExportHourly={handleExportHourly}
+          onExportAssumptionsJSON={handleExportAssumptions}
           onDownloadSample={handleDownloadSample}
           checksPass={checksPass}
           activeTab={activeTab}
@@ -425,7 +440,14 @@ export const App: React.FC = () => {
 
             {/* TAB 4: 24-HOUR DISPATCH & ENERGY FLOW */}
             {activeTab === 'dispatch' && (
-              <HourlyExplorer selected={evaluationResult.data.selected} />
+              <>
+                <DispatchComparisonTool
+                  selected={evaluationResult.data.selected}
+                  inputs={inputs}
+                  series={evaluationResult.data.series}
+                />
+                <HourlyExplorer selected={evaluationResult.data.selected} />
+              </>
             )}
 
             {/* TAB 5: RESEARCH REPORT NOTES & IEEE REFERENCES */}
