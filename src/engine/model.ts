@@ -49,6 +49,8 @@ export interface SimulationOutput {
   stored: Float64Array;
   imp: Float64Array;
   exp: Float64Array;
+  curtailed?: Float64Array;
+  totalCurtailedKWh?: number;
   passes: number;
   maxResidual: number;
   minStored: number;
@@ -59,10 +61,10 @@ export interface SimulationOutput {
 }
 
 /**
- * Core simulation rule per timestep dt (Phase 2):
+ * Core simulation rule per timestep dt (Phase 2 & Phase 4):
  * Accepts 60-min (dt=1.0), 30-min (dt=0.5), 5-min (dt=1/12) intervals.
  * 0 kWh skips all battery/SOC logic.
- * Enforces energy balance, stored energy boundaries, and power ratings with assertions.
+ * Enforces energy balance, stored energy boundaries, power ratings, and optional export limit.
  */
 export function simulateBatteryTimeSeries(
   pvInput: Float64Array | readonly number[],
@@ -73,7 +75,8 @@ export function simulateBatteryTimeSeries(
   cyclic = true,
   tol = 1e-6,
   max_pass = 20,
-  recordHourly = false
+  recordHourly = false,
+  exportLimitKW?: number
 ): SimulationOutput {
   const n = pvInput.length;
   if (loadInput.length !== n) {
@@ -88,17 +91,28 @@ export function simulateBatteryTimeSeries(
     const z = new Float64Array(n);
     const imp = new Float64Array(n);
     const exp = new Float64Array(n);
+    const curtailed = new Float64Array(n);
+    let totalCurtailed = 0;
     const hourly: Hour[] | undefined = recordHourly ? new Array(n) : undefined;
 
     for (let t = 0; t < n; t++) {
       imp[t] = Math.max(0, load[t] - pv[t]);
-      exp[t] = Math.max(0, pv[t] - load[t]);
+      const surplus = Math.max(0, pv[t] - load[t]);
+      if (exportLimitKW !== undefined && exportLimitKW >= 0) {
+        const allowedExp = Math.min(surplus, exportLimitKW * dt);
+        exp[t] = allowedExp;
+        curtailed[t] = Math.max(0, surplus - allowedExp);
+        totalCurtailed += curtailed[t];
+      } else {
+        exp[t] = surplus;
+      }
+
       if (hourly) {
         hourly[t] = {
           index: t,
           pv: pv[t],
           load: load[t],
-          surplus: exp[t],
+          surplus,
           deficit: imp[t],
           storedBefore: 0,
           charge: 0,
@@ -106,6 +120,7 @@ export function simulateBatteryTimeSeries(
           storedAfter: 0,
           gridImport: imp[t],
           gridExport: exp[t],
+          curtailed: curtailed[t],
           socEndPct: null,
           energyResidual: 0,
         };
@@ -118,6 +133,8 @@ export function simulateBatteryTimeSeries(
       stored: z,
       imp,
       exp,
+      curtailed,
+      totalCurtailedKWh: totalCurtailed,
       passes: 0,
       maxResidual: 0,
       minStored: 0,
@@ -178,17 +195,27 @@ export function simulateBatteryTimeSeries(
   let maxResidual = 0;
   let minStored = stored[0];
   let maxStored = stored[0];
+  const curtailed = new Float64Array(n);
+  let totalCurtailed = 0;
   const hourly: Hour[] | undefined = recordHourly ? new Array(n) : undefined;
 
   for (let t = 0; t < n; t++) {
     const surplus = Math.max(0, pv[t] - load[t]);
     const deficit = Math.max(0, load[t] - pv[t]);
     const i = deficit - discharge[t];
-    const x = surplus - charge[t];
+    const rawExport = surplus - charge[t];
+    let x = rawExport;
+    let cKWh = 0;
+    if (exportLimitKW !== undefined && exportLimitKW >= 0) {
+      x = Math.min(rawExport, exportLimitKW * dt);
+      cKWh = Math.max(0, rawExport - x);
+      totalCurtailed += cKWh;
+    }
     imp[t] = i;
     exp[t] = x;
+    curtailed[t] = cKWh;
 
-    const residual = Math.abs(pv[t] + i + discharge[t] - (load[t] + charge[t] + x));
+    const residual = Math.abs((pv[t] - cKWh) + i + discharge[t] - (load[t] + charge[t] + x));
     if (residual > maxResidual) maxResidual = residual;
     if (stored[t] < minStored) minStored = stored[t];
     if (stored[t] > maxStored) maxStored = stored[t];
@@ -220,6 +247,7 @@ export function simulateBatteryTimeSeries(
         storedAfter: stored[t],
         gridImport: i,
         gridExport: x,
+        curtailed: cKWh,
         socEndPct: bat.usable > 0 ? (100 * (stored[t] - bat.emin)) / bat.usable : null,
         energyResidual: residual,
       };
@@ -232,6 +260,8 @@ export function simulateBatteryTimeSeries(
     stored,
     imp,
     exp,
+    curtailed,
+    totalCurtailedKWh: totalCurtailed,
     passes: passesRun,
     maxResidual,
     minStored,
@@ -372,7 +402,8 @@ export function simulateCapacity(
     true,
     1e-6,
     50,
-    detailed
+    detailed,
+    p.exportLimitKW
   );
 
   let importKWh = 0;
@@ -440,6 +471,7 @@ export function simulateCapacity(
     maxStoredKWh: sim.maxStored,
     importKWh,
     exportKWh,
+    curtailedKWh: sim.totalCurtailedKWh ?? 0,
     chargedKWh,
     dischargedKWh,
     equivalentCycles: (bat && bat.usable > 0) ? dischargedKWh / (eff * bat.usable) : 0,
@@ -486,7 +518,8 @@ export function evaluateProduct(
     true,
     1e-6,
     50,
-    detailed
+    detailed,
+    inputs.exportLimitKW
   );
 
   let importKWh = 0;
@@ -547,6 +580,7 @@ export function evaluateProduct(
     maxStoredKWh: sim.maxStored,
     importKWh,
     exportKWh,
+    curtailedKWh: sim.totalCurtailedKWh ?? 0,
     chargedKWh,
     dischargedKWh,
     equivalentCycles,

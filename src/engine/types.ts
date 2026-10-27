@@ -26,6 +26,7 @@ export interface Inputs {
   useCheaperHomeBatteriesProgram?: boolean; // Australian 2026 STC program (default: false for thesis baseline, true for products)
   subsidyEligible?: boolean;          // CER accreditation / eligible product flag (default: true)
   selectedProductId?: string;         // selected real commercial product id
+  exportLimitKW?: number;             // optional grid export limit (kW)
 }
 
 export interface Series {
@@ -45,6 +46,7 @@ export interface Hour {
   storedAfter: number;
   gridImport: number;
   gridExport: number;
+  curtailed?: number;
   socEndPct: number | null;
   energyResidual: number;
 }
@@ -72,6 +74,7 @@ export interface Result {
   maxStoredKWh: number;
   importKWh: number;
   exportKWh: number;
+  curtailedKWh?: number;
   chargedKWh: number;
   dischargedKWh: number;
   equivalentCycles: number;
