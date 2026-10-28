@@ -713,11 +713,25 @@ export function evaluateAll(
   const bestProductByNPV = productRankings[0];
 
   // Find user selected candidate across all candidate capacities (including 0 kWh)
-  const selectedSummary = results.find(
+  let selectedSummary = results.find(
     r => Math.abs(r.capacityKWh - inputs.selectedBatteryKWh) < 1e-6
   );
+
+  // If user selected a custom or off-grid commercial capacity (e.g. 9.6 kWh, 7.7 kWh, 13.5 kWh)
+  // that was not in the initial 0.5 kWh grid, simulate it on demand rather than throwing an error
   if (!selectedSummary) {
-    throw new Error(`Selected battery ${inputs.selectedBatteryKWh} kWh is outside candidate range (0.0–20.0 kWh in 0.5 kWh steps).`);
+    selectedSummary = simulateCapacity(inputs.selectedBatteryKWh, inputs, series, false, 1.0, baseline.gridCostAUD);
+    selectedSummary.netBenefitAUD = baseline.totalAnnualCostAUD - selectedSummary.totalAnnualCostAUD;
+    if (selectedSummary.capacityKWh > 0 && selectedSummary.netCapexAUD > 0) {
+      const grossBillSavings = baseline.gridCostAUD - selectedSummary.gridCostAUD;
+      const netAnnualOperatingSavings = grossBillSavings - selectedSummary.annualOMAUD;
+      selectedSummary.simplePaybackYears = netAnnualOperatingSavings > 0 ? selectedSummary.netCapexAUD / netAnnualOperatingSavings : null;
+    } else {
+      selectedSummary.simplePaybackYears = null;
+    }
+    // Seamlessly include in results array and maintain sorted order by capacity
+    results.push(selectedSummary);
+    results.sort((a, b) => a.capacityKWh - b.capacityKWh);
   }
 
   // Run detailed hourly simulation for the selected battery

@@ -12,6 +12,8 @@ interface ParamsProps {
   bestPositive: Result;
   autoFollowOptimal: boolean;
   onToggleAutoFollow: (auto: boolean) => void;
+  errorMessage?: string;
+  onReset?: () => void;
 }
 
 export const ParametersPanel: React.FC<ParamsProps> = ({
@@ -24,6 +26,8 @@ export const ParametersPanel: React.FC<ParamsProps> = ({
   bestPositive,
   autoFollowOptimal,
   onToggleAutoFollow,
+  errorMessage,
+  onReset,
 }) => {
   const [openSections, setOpenSections] = useState<{ [key: string]: boolean }>({
     household: true,
@@ -73,6 +77,34 @@ export const ParametersPanel: React.FC<ParamsProps> = ({
             )}
           </div>
         </div>
+
+        {/* Input Error Alert Callout */}
+        {errorMessage && (
+          <div style={{
+            marginTop: '12px',
+            background: 'rgba(239, 68, 68, 0.2)',
+            border: '1px solid #ef4444',
+            borderRadius: '8px',
+            padding: '10px 12px',
+            color: '#fca5a5',
+            fontSize: '0.75rem',
+          }}>
+            <div style={{ fontWeight: 800, color: '#fecaca', marginBottom: '4px' }}>
+              ⚠️ Input Error Detected
+            </div>
+            <div style={{ marginBottom: '8px', lineHeight: 1.4 }}>{errorMessage}</div>
+            {onReset && (
+              <button
+                type="button"
+                className="btn btn-sm btn-secondary"
+                onClick={onReset}
+                style={{ width: '100%', fontSize: '0.6875rem', padding: '3px 8px', justifyContent: 'center' }}
+              >
+                Reset to Default Inputs
+              </button>
+            )}
+          </div>
+        )}
 
         {/* Preset Selector */}
         <div style={{ marginTop: '14px' }}>
@@ -435,21 +467,40 @@ export const ParametersPanel: React.FC<ParamsProps> = ({
               <div className="control-group">
                 <div className="control-label-row">
                   <span>Custom Candidate to Inspect</span>
-                  <span className="control-value-badge" style={{ color: '#fbbf24' }}>
-                    {inputs.selectedBatteryKWh.toFixed(1)} kWh
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <input
+                      type="number"
+                      min={0.0}
+                      max={50.0}
+                      step={0.1}
+                      value={inputs.selectedBatteryKWh}
+                      onChange={(e) => update('selectedBatteryKWh', Math.max(0, Number(e.target.value)))}
+                      style={{
+                        width: '70px',
+                        background: '#0f172a',
+                        border: '1px solid #475569',
+                        borderRadius: '4px',
+                        color: '#fbbf24',
+                        fontWeight: 700,
+                        fontSize: '0.8125rem',
+                        padding: '2px 6px',
+                        textAlign: 'right',
+                      }}
+                    />
+                    <span style={{ fontSize: '0.75rem', color: '#94a3b8' }}>kWh</span>
+                  </div>
                 </div>
                 <input
                   type="range"
                   min={0.0}
                   max={20.0}
-                  step={0.5}
+                  step={0.1}
                   value={inputs.selectedBatteryKWh}
                   onChange={(e) => update('selectedBatteryKWh', Number(e.target.value))}
                   className="slider slider-gold"
                 />
                 <span style={{ fontSize: '0.6875rem', color: '#94a3b8' }}>
-                  Use this to test what happens if you install an alternative commercial capacity (e.g. 10.0 kWh or 13.5 kWh).
+                  Test any candidate or commercial product capacity (e.g. 9.6 kWh, 10.0 kWh, or 13.5 kWh).
                 </span>
               </div>
             )}

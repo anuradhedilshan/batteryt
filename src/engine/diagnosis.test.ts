@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import syntheticData from '../data/syntheticReference.json';
-import { simulateBatteryTimeSeries, evaluateLifetimeNPV, Battery, evaluateProduct } from './model';
+import { simulateBatteryTimeSeries, evaluateLifetimeNPV, Battery, evaluateProduct, evaluateAll } from './model';
 import { sanityCheckInputs, validateInputs } from './validation';
 import { calculateSubsidy } from '../config/cheaperHomeBatteries';
 import { Inputs } from './types';
@@ -185,5 +185,13 @@ describe('Part D: Diagnostic & Explainability Regression Tests', () => {
   // 5. Validates non-numeric fields in Inputs without error
   it('validates Inputs containing boolean and string parameters without throwing non-finite error', () => {
     expect(() => validateInputs(BASE_INPUTS)).not.toThrow();
+  });
+
+  // 6. Supports arbitrary commercial battery capacities (e.g. 9.6 kWh Sungrow) without grid-step error
+  it('evaluates off-grid commercial capacities like 9.6 kWh seamlessly', () => {
+    const out96 = evaluateAll({ ...BASE_INPUTS, selectedBatteryKWh: 9.6 }, syntheticData.pv, syntheticData.load);
+    expect(out96.selected.capacityKWh).toBe(9.6);
+    expect(out96.selected.dischargedKWh).toBeGreaterThan(0);
+    expect(out96.results.some(r => Math.abs(r.capacityKWh - 9.6) < 1e-6)).toBe(true);
   });
 });

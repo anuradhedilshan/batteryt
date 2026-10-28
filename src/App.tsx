@@ -296,6 +296,8 @@ export const App: React.FC = () => {
         bestPositive={evaluationResult.ok ? evaluationResult.data.bestPositive : { capacityKWh: 7.5, totalAnnualCostAUD: 707.72 } as any}
         autoFollowOptimal={autoFollowOptimal}
         onToggleAutoFollow={setAutoFollowOptimal}
+        errorMessage={evaluationResult.ok ? undefined : evaluationResult.error}
+        onReset={handleReset}
       />
 
       {/* Main Analysis Dashboard */}
@@ -339,10 +341,37 @@ export const App: React.FC = () => {
 
         {/* Global Error Banner */}
         {!evaluationResult.ok && (
-          <div className="callout callout-error" style={{ fontSize: '1rem', padding: '16px 20px' }}>
-            <strong>CALCULATION / INPUT ERROR:</strong> {evaluationResult.error}
-            <div style={{ marginTop: '6px', fontSize: '0.875rem' }}>
-              Please correct the highlighted inputs in the sidebar.
+          <div
+            className="callout callout-error"
+            style={{
+              fontSize: '1rem',
+              padding: '18px 24px',
+              display: 'flex',
+              flexDirection: 'column',
+              gap: '12px',
+              borderLeft: '5px solid #dc2626',
+              background: '#fef2f2',
+              borderRadius: '8px',
+              color: '#991b1b',
+              marginBottom: '20px',
+            }}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '12px' }}>
+              <div>
+                <strong style={{ fontSize: '1.0625rem', color: '#7f1d1d' }}>CALCULATION / INPUT ERROR:</strong>
+                <div style={{ marginTop: '4px', fontSize: '0.9375rem', fontWeight: 600 }}>{evaluationResult.error}</div>
+              </div>
+              <button
+                type="button"
+                className="btn btn-primary"
+                onClick={handleReset}
+                style={{ background: '#dc2626', borderColor: '#b91c1c', fontWeight: 700, padding: '6px 14px' }}
+              >
+                Reset to Safe Defaults
+              </button>
+            </div>
+            <div style={{ fontSize: '0.8125rem', color: '#b91c1c' }}>
+              Click &quot;Reset to Safe Defaults&quot; to restore working parameters, or adjust the parameter in the sidebar.
             </div>
           </div>
         )}
