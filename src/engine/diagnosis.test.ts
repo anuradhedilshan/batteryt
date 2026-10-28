@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import syntheticData from '../data/syntheticReference.json';
 import { simulateBatteryTimeSeries, evaluateLifetimeNPV, Battery, evaluateProduct } from './model';
-import { sanityCheckInputs } from './validation';
+import { sanityCheckInputs, validateInputs } from './validation';
 import { calculateSubsidy } from '../config/cheaperHomeBatteries';
 import { Inputs } from './types';
 import { BatteryProduct } from '../config/products';
@@ -180,5 +180,10 @@ describe('Part D: Diagnostic & Explainability Regression Tests', () => {
     // When FiT is 0.10, storing solar forfeits $0.10/eta_c in export income, lowering the marginal gain of cycling.
     // Therefore, NPV with FiT=0 must be strictly greater than NPV with FiT=0.10.
     expect(evalFiT0.lifetimeNPVAUD).toBeGreaterThan(evalFiT10.lifetimeNPVAUD);
+  });
+
+  // 5. Validates non-numeric fields in Inputs without error
+  it('validates Inputs containing boolean and string parameters without throwing non-finite error', () => {
+    expect(() => validateInputs(BASE_INPUTS)).not.toThrow();
   });
 });

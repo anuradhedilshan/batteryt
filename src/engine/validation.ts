@@ -1,10 +1,34 @@
 import { Inputs } from './types';
 
 export function validateInputs(p: Inputs): void {
+  const nonNumericKeys = new Set([
+    'installDate',
+    'useCheaperHomeBatteriesProgram',
+    'subsidyEligible',
+    'selectedProductId',
+  ]);
+
   for (const [key, value] of Object.entries(p)) {
-    if (!Number.isFinite(value)) {
+    if (nonNumericKeys.has(key) || value === undefined) {
+      continue;
+    }
+    if (typeof value !== 'number' || !Number.isFinite(value)) {
       throw new Error(`Parameter '${key}' must be a finite number.`);
     }
+  }
+
+  if (p.installDate !== undefined && typeof p.installDate === 'string') {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(p.installDate)) {
+      throw new Error('Install date must be in YYYY-MM-DD format.');
+    }
+  }
+
+  if (p.useCheaperHomeBatteriesProgram !== undefined && typeof p.useCheaperHomeBatteriesProgram !== 'boolean') {
+    throw new Error('useCheaperHomeBatteriesProgram must be a boolean.');
+  }
+
+  if (p.subsidyEligible !== undefined && typeof p.subsidyEligible !== 'boolean') {
+    throw new Error('subsidyEligible must be a boolean.');
   }
 
   if (p.selectedBatteryKWh < 0) {
