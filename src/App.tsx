@@ -427,6 +427,9 @@ export const App: React.FC = () => {
                   economicOptimal={evaluationResult.data.economicOptimal}
                   bestPositive={evaluationResult.data.bestPositive}
                   selected={evaluationResult.data.selected}
+                  bestProduct={evaluationResult.data.bestProductByNPV}
+                  inputs={inputs}
+                  series={evaluationResult.data.series}
                   isIllustrative={profile.metadata.source === 'illustration'}
                   onSelectCapacity={handleSelectCapacity}
                 />

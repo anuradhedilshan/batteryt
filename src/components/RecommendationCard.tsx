@@ -1,12 +1,22 @@
-import React from 'react';
-import { AlertTriangle, CheckCircle2, Zap } from 'lucide-react';
-import { Result } from '../engine/types';
+import React, { useMemo } from 'react';
+import {
+  CheckCircle2,
+  TrendingUp,
+  Scale,
+  Sparkles,
+  ShieldAlert,
+} from 'lucide-react';
+import { Result, Inputs, Series, ProductEvaluation } from '../engine/types';
+import { analyzeDecision } from '../engine/explain';
 
 interface RecommendationProps {
   baseline: Result;
   economicOptimal: Result;
   bestPositive: Result;
   selected: Result;
+  bestProduct?: ProductEvaluation;
+  inputs: Inputs;
+  series: Series;
   isIllustrative?: boolean;
   onSelectCapacity: (kwh: number) => void;
 }
@@ -16,116 +26,322 @@ export const RecommendationCard: React.FC<RecommendationProps> = ({
   economicOptimal,
   bestPositive,
   selected,
+  bestProduct,
+  inputs,
+  series,
   isIllustrative = true,
   onSelectCapacity,
 }) => {
-  const isWorthwhile = bestPositive.netBenefitAUD >= -0.005;
+  // If bestProduct not provided, synthesize from bestPositive
+  const activeProduct: ProductEvaluation = useMemo(() => {
+    if (bestProduct) return bestProduct;
+    return {
+      id: 'synthetic-candidate',
+      name: `${bestPositive.capacityKWh.toFixed(1)} kWh Sizing Option`,
+      manufacturer: 'Representative',
+      usableKWh: bestPositive.usableKWh,
+      powerKW: bestPositive.powerKW || 5.0,
+      installedPriceAUD: bestPositive.grossCapexAUD,
+      subsidyAUD: bestPositive.subsidyAUD,
+      netCapexAUD: bestPositive.netCapexAUD,
+      lifetimeNPVAUD: bestPositive.lifetimeNPVAUD,
+      equivalentAnnualBenefitAUD: bestPositive.equivalentAnnualBenefitAUD,
+      year1BillSavingsAUD: bestPositive.year1BillSavingsAUD,
+      simplePaybackYears: bestPositive.simplePaybackYears || null,
+      breakEvenGrossAUD: bestPositive.breakEvenGrossAUD || 0,
+      discountedPaybackYear: bestPositive.discountedPaybackYear || null,
+      selfConsumptionPct: bestPositive.selfConsumptionPct,
+      selfSufficiencyPct: bestPositive.selfSufficiencyPct,
+      equivalentCycles: bestPositive.equivalentCycles,
+      result: bestPositive,
+    };
+  }, [bestProduct, bestPositive]);
+
+  const analysis = useMemo(() => {
+    return analyzeDecision(activeProduct, inputs, series, baseline.gridCostAUD);
+  }, [activeProduct, inputs, series, baseline.gridCostAUD]);
+
   const isSelectedOptimal = Math.abs(selected.capacityKWh - economicOptimal.capacityKWh) < 1e-6;
   const isSelectedBestPositive = Math.abs(selected.capacityKWh - bestPositive.capacityKWh) < 1e-6;
-  const extraVsBaseline = bestPositive.totalAnnualCostAUD - baseline.totalAnnualCostAUD;
 
   return (
-    <div className={`recommendation-banner ${!isWorthwhile ? 'has-warning' : ''}`}>
-      <div className="rec-left">
+    <div
+      className={`card ${analysis.isSolarOnlyCheaper ? 'decision-solar-only' : 'decision-battery-viable'}`}
+      style={{
+        border: analysis.isCloseCall
+          ? '2px solid #f59e0b'
+          : analysis.isSolarOnlyCheaper
+          ? '1px solid #fed7aa'
+          : '2px solid #10b981',
+        borderRadius: '12px',
+        padding: '24px',
+        background: '#ffffff',
+        boxShadow: 'var(--shadow-md)',
+        marginBottom: '20px',
+      }}
+    >
+      {/* Top Banner / Tags */}
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: '10px', marginBottom: '14px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexWrap: 'wrap' }}>
-          {isWorthwhile ? (
-            <span className="rec-tag rec-tag-optimal">
-              <CheckCircle2 size={13} />
-              Financially Feasible Battery System
+          {/* Part C #9: Illustrative result banner */}
+          {isIllustrative && (
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                background: '#fef3c7',
+                color: '#92400e',
+                border: '1px solid #fde68a',
+                padding: '4px 10px',
+                borderRadius: '9999px',
+                fontSize: '0.75rem',
+                fontWeight: 700,
+              }}
+            >
+              <Sparkles size={12} />
+              Illustrative result - not based on measured data
+            </span>
+          )}
+
+          {/* Part C #7: Close call label */}
+          {analysis.isCloseCall ? (
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                background: '#fff7ed',
+                color: '#c2410c',
+                border: '1px solid #fdba74',
+                padding: '4px 10px',
+                borderRadius: '9999px',
+                fontSize: '0.75rem',
+                fontWeight: 700,
+              }}
+            >
+              <Scale size={13} />
+              Close call - result is sensitive to assumptions (|NPV| ≤ 5% of net capex)
+            </span>
+          ) : analysis.isSolarOnlyCheaper ? (
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                background: '#fff1f2',
+                color: '#9f1239',
+                border: '1px solid #fecdd3',
+                padding: '4px 10px',
+                borderRadius: '9999px',
+                fontSize: '0.75rem',
+                fontWeight: 700,
+              }}
+            >
+              <ShieldAlert size={13} />
+              Solar PV Only is Cheaper Under Current Inputs
             </span>
           ) : (
-            <>
-              <span className="rec-tag rec-tag-warning">
-                <AlertTriangle size={13} />
-                Economic Optimum: Solar-Only (0 kWh)
-              </span>
-              <span className="rec-tag" style={{ background: '#fef3c7', color: '#92400e', borderColor: '#fde68a' }}>
-                <Zap size={13} />
-                Battery Economically Rejected (Report Sec. 7.2)
-              </span>
-            </>
+            <span
+              style={{
+                display: 'inline-flex',
+                alignItems: 'center',
+                gap: '5px',
+                background: '#ecfdf5',
+                color: '#065f46',
+                border: '1px solid #a7f3d0',
+                padding: '4px 10px',
+                borderRadius: '9999px',
+                fontSize: '0.75rem',
+                fontWeight: 700,
+              }}
+            >
+              <CheckCircle2 size={13} />
+              Battery Storage Financially Attractive
+            </span>
           )}
+
+          <span
+            style={{
+              fontSize: '0.75rem',
+              fontWeight: 600,
+              color: 'var(--text-muted)',
+              background: '#f1f5f9',
+              padding: '4px 8px',
+              borderRadius: '6px',
+            }}
+          >
+            Best Tested System: {analysis.bestProduct.name} ({analysis.bestProduct.usableKWh.toFixed(1)} kWh)
+          </span>
         </div>
 
-        <h2 className="rec-title">
-          {isWorthwhile ? (
-            <>{isIllustrative ? 'Illustrative Sizing Result' : 'Optimal Battery Recommendation'}: {bestPositive.capacityKWh.toFixed(1)} kWh</>
-          ) : (
-            <>{isIllustrative ? 'Illustrative Sizing Decision' : 'Optimal Economic Sizing'}: 0.0 kWh (Solar PV Only)</>
-          )}
-          <span style={{ fontSize: '1.125rem', fontWeight: 600, color: 'var(--text-secondary)', marginLeft: '12px' }}>
-            (${economicOptimal.totalAnnualCostAUD.toFixed(2)}/year total cost)
-          </span>
-        </h2>
-
-        <p className="rec-desc">
-          {!isWorthwhile ? (
-            <>
-              <strong>FINANCIAL RESULT (Report Sec. 4.5 &amp; 7.2):</strong> Under current prices ($0.35/kWh import, $0.05/kWh FiT, $1,000 + $700/kWh capex), no battery beats solar alone. The solar-only annual electricity bill is <strong>${baseline.totalAnnualCostAUD.toFixed(2)}/yr</strong>.
-              <br /><br />
-              <strong>PHYSICAL STORAGE OPTION:</strong> If the household chooses to install a home battery for <strong>blackout backup, self-reliance, or emissions reduction</strong>, the <strong>least-cost positive battery</strong> is <strong>{bestPositive.capacityKWh.toFixed(1)} kWh</strong> ($707.72/yr total cost, incurring only <strong>${extraVsBaseline.toFixed(2)}/year</strong> more than solar alone).
-            </>
-          ) : (
-            <>
-              <strong>FINANCIALLY ATTRACTIVE (Report Eq. 13):</strong> The <strong>{bestPositive.capacityKWh.toFixed(1)} kWh</strong> residential battery minimizes overall annual expenditure, saving <strong>+${bestPositive.netBenefitAUD.toFixed(2)}/year</strong> compared to relying on solar PV alone.
-            </>
-          )}
-        </p>
-
-        <div className="rec-comparison">
-          <strong>Decision Benchmark:</strong> 0 kWh Solar-Only Baseline Cost = <strong>${baseline.totalAnnualCostAUD.toFixed(2)}/yr</strong>.
-          {!isWorthwhile && (
-            <span> Least-Cost Physical Battery = <strong>{bestPositive.capacityKWh.toFixed(1)} kWh</strong> (${bestPositive.totalAnnualCostAUD.toFixed(2)}/yr, net benefit -${(-bestPositive.netBenefitAUD).toFixed(2)}/yr).</span>
-          )}
+        {/* Quick Selection Buttons */}
+        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+          <button
+            type="button"
+            className={`btn btn-sm ${isSelectedOptimal ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => onSelectCapacity(economicOptimal.capacityKWh)}
+            style={{ fontSize: '0.75rem', fontWeight: 600, padding: '4px 10px' }}
+          >
+            {economicOptimal.capacityKWh === 0 ? 'Baseline (0 kWh Solar Only)' : `Optimum (${economicOptimal.capacityKWh.toFixed(1)} kWh)`}
+          </button>
+          <button
+            type="button"
+            className={`btn btn-sm ${isSelectedBestPositive ? 'btn-primary' : 'btn-secondary'}`}
+            onClick={() => onSelectCapacity(bestPositive.capacityKWh)}
+            style={{ fontSize: '0.75rem', fontWeight: 600, padding: '4px 10px' }}
+          >
+            Best Battery ({bestPositive.capacityKWh.toFixed(1)} kWh)
+          </button>
         </div>
       </div>
 
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '8px', minWidth: '260px' }}>
-        {/* Buttons to switch between economic minimum and least-cost battery */}
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', width: '100%' }}>
-          {!isWorthwhile ? (
-            <>
-              <button
-                type="button"
-                className={`btn btn-sm ${isSelectedOptimal ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => onSelectCapacity(0)}
-                style={{ width: '100%', justifyContent: 'center', fontWeight: 700 }}
-              >
-                {isSelectedOptimal ? '✓ Active: 0 kWh (Economic Optimum)' : 'Select 0 kWh (Economic Optimum)'}
-              </button>
+      {/* Primary Decision Header (Part C Wording Rule) */}
+      <h2 style={{ fontSize: '1.375rem', fontWeight: 800, margin: '0 0 10px 0', color: '#0f172a' }}>
+        {analysis.isCloseCall
+          ? `Assumption-Sensitive Decision: ${analysis.bestProduct.name}`
+          : analysis.isSolarOnlyCheaper
+          ? 'Solar only is cheaper under these inputs'
+          : `Battery Storage Recommended: ${analysis.bestProduct.name}`}
+      </h2>
 
-              <button
-                type="button"
-                className={`btn btn-sm ${isSelectedBestPositive ? 'btn-primary' : 'btn-secondary'}`}
-                onClick={() => onSelectCapacity(bestPositive.capacityKWh)}
-                style={{ width: '100%', justifyContent: 'center', fontWeight: 700 }}
-              >
-                {isSelectedBestPositive ? `✓ Active: ${bestPositive.capacityKWh.toFixed(1)} kWh (Least-Cost Battery)` : `Select ${bestPositive.capacityKWh.toFixed(1)} kWh (Least-Cost Battery)`}
-              </button>
-            </>
-          ) : (
-            <button
-              type="button"
-              className={`btn btn-sm ${isSelectedOptimal ? 'btn-primary' : 'btn-secondary'}`}
-              onClick={() => onSelectCapacity(bestPositive.capacityKWh)}
-              style={{ width: '100%', justifyContent: 'center', fontWeight: 700 }}
+      {/* Part C #8 & Wording Rule: Plain language explanation */}
+      <div
+        style={{
+          background: '#f8fafc',
+          border: '1px solid #e2e8f0',
+          borderRadius: '8px',
+          padding: '14px 18px',
+          fontSize: '0.9375rem',
+          lineHeight: 1.6,
+          color: '#1e293b',
+          marginBottom: '20px',
+        }}
+      >
+        <p style={{ margin: '0 0 8px 0', fontWeight: 500 }}>
+          {analysis.wordingRuleText}
+        </p>
+        <div style={{ fontSize: '0.8125rem', color: '#64748b', fontStyle: 'italic', borderTop: '1px dashed #cbd5e1', paddingTop: '8px', marginTop: '8px' }}>
+          <strong>Reference Model Synthesis:</strong> {analysis.explanationText}
+        </div>
+      </div>
+
+      {/* Metrics Grid */}
+      <div
+        style={{
+          display: 'grid',
+          gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+          gap: '14px',
+          marginBottom: '22px',
+        }}
+      >
+        {/* Metric 1: Lifetime NPV */}
+        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '14px' }}>
+          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+            1. Lifetime NPV vs Solar-Only
+          </span>
+          <div style={{ fontSize: '1.375rem', fontWeight: 800, color: analysis.npvChosenLifeAUD >= 0 ? '#059669' : '#dc2626', margin: '4px 0' }}>
+            {analysis.npvChosenLifeAUD >= 0 ? '+' : ''}${Math.round(analysis.npvChosenLifeAUD).toLocaleString()} AUD
+          </div>
+          <div style={{ fontSize: '0.8125rem', color: '#475569' }}>
+            Chosen life: <strong>{analysis.chosenLifeYears} yrs</strong>
+          </div>
+          <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px', borderTop: '1px solid #e2e8f0', paddingTop: '4px' }}>
+            At 10 yrs: <strong>{analysis.npv10YearsAUD >= 0 ? '+' : ''}${Math.round(analysis.npv10YearsAUD).toLocaleString()}</strong> | At 15 yrs: <strong>{analysis.npv15YearsAUD >= 0 ? '+' : ''}${Math.round(analysis.npv15YearsAUD).toLocaleString()}</strong>
+          </div>
+        </div>
+
+        {/* Metric 2: Value per kWh Cycled */}
+        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '14px' }}>
+          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+            2. Value Per kWh Cycled
+          </span>
+          <div style={{ fontSize: '1.375rem', fontWeight: 800, color: '#0f172a', margin: '4px 0' }}>
+            ${analysis.valuePerKWhCycled.toFixed(3)} AUD/kWh
+          </div>
+          <div style={{ fontSize: '0.8125rem', color: '#475569' }}>
+            Avoided import: <strong>+${analysis.avoidedImportPerKWh.toFixed(3)}</strong>
+          </div>
+          <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px', borderTop: '1px solid #e2e8f0', paddingTop: '4px' }}>
+            Lost export income: <strong>-${analysis.lostExportPerKWh.toFixed(3)}</strong> (eff: {(analysis.eta_c * 100).toFixed(0)}%)
+          </div>
+        </div>
+
+        {/* Metric 3: First-Year Bill Saving & Capital Outlay */}
+        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '14px' }}>
+          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+            3. Bill Saving &amp; Net Capex
+          </span>
+          <div style={{ fontSize: '1.375rem', fontWeight: 800, color: '#0f172a', margin: '4px 0' }}>
+            ${Math.round(analysis.year1BillSavingAUD).toLocaleString()} AUD/yr
+          </div>
+          <div style={{ fontSize: '0.8125rem', color: '#475569' }}>
+            Net Capex: <strong>${Math.round(analysis.netCapexAUD).toLocaleString()} AUD</strong>
+          </div>
+          <div style={{ fontSize: '0.75rem', color: '#64748b', marginTop: '4px', borderTop: '1px solid #e2e8f0', paddingTop: '4px' }}>
+            Gross: ${Math.round(analysis.grossCapexAUD).toLocaleString()} | Subsidy: -${Math.round(analysis.subsidyAUD).toLocaleString()}
+          </div>
+        </div>
+
+        {/* Metric 4 & 5: Break-even & Payback */}
+        <div style={{ background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '14px' }}>
+          <span style={{ fontSize: '0.75rem', fontWeight: 700, color: '#64748b', textTransform: 'uppercase' }}>
+            4 &amp; 5. Break-Even &amp; Payback
+          </span>
+          <div style={{ fontSize: '1.375rem', fontWeight: 800, color: '#0f172a', margin: '4px 0' }}>
+            {analysis.paybackText}
+          </div>
+          <div style={{ fontSize: '0.8125rem', color: '#475569' }}>
+            Break-even price: <strong>${Math.round(analysis.breakEvenGrossAUD).toLocaleString()} AUD</strong>
+          </div>
+          <div style={{ fontSize: '0.75rem', color: analysis.breakEvenPercentCut > 0 ? '#b91c1c' : '#059669', marginTop: '4px', borderTop: '1px solid #e2e8f0', paddingTop: '4px', fontWeight: 600 }}>
+            {analysis.breakEvenPercentCut > 0
+              ? `Requires ${analysis.breakEvenPercentCut.toFixed(0)}% lower price to break even`
+              : `Current price is ${Math.abs(analysis.breakEvenPercentCut).toFixed(0)}% below break-even`}
+          </div>
+        </div>
+      </div>
+
+      {/* Part C #6: "What Would Change The Answer" Sensitivity Analysis */}
+      <div style={{ background: '#f1f5f9', borderRadius: '8px', padding: '16px 20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '10px' }}>
+          <TrendingUp size={16} color="#0f172a" />
+          <h4 style={{ margin: 0, fontSize: '0.875rem', fontWeight: 700, color: '#0f172a', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+            What Would Change The Answer? (Single-Variable Exact Evaluations)
+          </h4>
+        </div>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '10px' }}>
+          {analysis.sensitivities.map((s, idx) => (
+            <div
+              key={idx}
+              style={{
+                background: '#ffffff',
+                border: '1px solid #cbd5e1',
+                borderRadius: '6px',
+                padding: '10px 12px',
+                display: 'flex',
+                flexDirection: 'column',
+                justifyContent: 'space-between',
+              }}
             >
-              {isSelectedOptimal ? `✓ Active: ${bestPositive.capacityKWh.toFixed(1)} kWh (Optimal)` : `Select ${bestPositive.capacityKWh.toFixed(1)} kWh (Optimal)`}
-            </button>
-          )}
-
-          <button
-            type="button"
-            className="btn btn-secondary btn-sm"
-            onClick={() => {
-              const el = document.getElementById('cost-curve-section');
-              if (el) el.scrollIntoView({ behavior: 'smooth' });
-            }}
-            style={{ width: '100%', justifyContent: 'center', fontSize: '0.75rem', fontWeight: 600 }}
-            title="Jump to the annual cost curve and capacity comparison"
-          >
-            Inspect Cost Curve ↓
-          </button>
+              <div>
+                <div style={{ fontSize: '0.8125rem', fontWeight: 700, color: '#1e293b' }}>{s.label}</div>
+                <div style={{ fontSize: '0.75rem', color: '#64748b', marginBottom: '6px' }}>{s.condition}</div>
+              </div>
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '6px', borderTop: '1px solid #f1f5f9', paddingTop: '6px' }}>
+                <span style={{ fontSize: '0.75rem', color: '#475569' }}>New NPV:</span>
+                <span
+                  style={{
+                    fontSize: '0.8125rem',
+                    fontWeight: 800,
+                    color: s.npvAUD >= 0 ? '#059669' : '#dc2626',
+                  }}
+                >
+                  {s.npvAUD >= 0 ? '+' : ''}${Math.round(s.npvAUD).toLocaleString()} AUD
+                </span>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>
