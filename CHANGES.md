@@ -98,8 +98,52 @@ This document records the phased refactoring, mathematical alignment, and featur
 
 ---
 
+## Update 1 — Diagnose "Go For Solar Only" & Make Decision Explainable
+
+### Part A — Diagnosis & Golden Comparison (`DIAGNOSIS.md` & `scripts/diagnose_10kwh.ts`)
+- **Root Cause Analysis:**
+  - Evaluated 10 kWh usable (5 kW, $8,000 capex, 10 yrs, r=0.06, om=1%, STC=$37, install=2026-11-01, t_imp=0.35, t_fit=0.05).
+  - Mathematical simulation matches `battery_model.py` across all 14 energy and economic metrics to $< 10^{-10}\text{ kWh}$ and $< 10^{-10}\text{ AUD}$.
+  - Under these realistic 2026 conditions, a 10 kWh battery yields **+$1,284.40 AUD NPV**, saves **$999.61 AUD/yr**, and pays back in **Year 8**. The battery does not lose to solar-only.
+  - Identified why the app previously recommended "solar only":
+    1. `useCheaperHomeBatteriesProgram` was not defined in default inputs, causing `simulateCapacity` to default to an uncredited 30% hypothetical capex discount rather than the $2,516 STC rebate.
+    2. Initial UI copy unconditionally labeled 0 kWh as the optimal decision without explaining the economic spread.
+    3. Catalogue turnkey prices without subsidy exceeded the $9,196 AUD break-even price.
+- **10-Point Checklist:** Completed with file/line evidence in `DIAGNOSIS.md`. Every item passed.
+
+### Part B — Input Validation on Load (`src/engine/validation.ts` & `src/components/SanityWarningsBanner.tsx`)
+- Added `sanityCheckInputs(t_imp, t_fit, pv, load)` matching `battery_model.py`:
+  - Flags tariff > $2.00 AUD/kWh (cents entered as dollars) as blocking.
+  - Flags feed-in tariff $\ge$ import tariff as blocking.
+  - Flags PV $< 30\%$ of load as data advisory.
+  - Flags average hourly energy $> 20\text{ kWh/h}$ as data advisory.
+- UI Banner (`SanityWarningsBanner`):
+  - Suspends calculation display while unconfirmed blocking warnings exist.
+  - Requires explicit user confirmation or provides one-click auto-fixes (cents to dollars, reset FiT).
+
+### Part C — Decision Explanation Panel (`src/engine/explain.ts` & `src/components/RecommendationCard.tsx`)
+- Replaced bare "solar only" with an explainable decision panel:
+  1. **NPV vs Solar-Only:** Displayed at chosen life, 10 years, and 15 years.
+  2. **Value per kWh Cycled:** $\eta_d T_{imp} - T_{fit}/\eta_c$, showing avoided import and lost export income separately.
+  3. **Upfront & Annual Economics:** Year-1 bill saving, gross price, STC subsidy, and net price.
+  4. **Break-Even Gross Installed Price (`break_even_gross`):** Displays break-even turnkey cost and percentage reduction needed.
+  5. **Discounted Payback Year (`discounted_payback_year`):** Identifies exact payback year up to 30 years, or displays "does not pay back within 30 years".
+  6. **"What Would Change The Answer" Sensitivity:** Evaluates single-variable shifts: 15-year life, FiT -50%, import +20%, price -20% using exact re-simulation (never estimated).
+  7. **Close-Call Detection:** Displays amber "Close call - result is sensitive to assumptions" when $|\text{NPV}| \le 5\%$ of net capex.
+  8. **Plain-Language Explanation:** Integrated `explain()` synthesis and enforced the wording rule: *"Solar only is cheaper under these inputs because..."* (never bare "go solar only").
+  9. **Illustrative Banner:** Displayed on synthetic/example data.
+
+### Part D — Automated Regression Tests (`src/engine/diagnosis.test.ts`)
+- Added 4 automated regression tests:
+  1. `evaluate` at `break_even_gross` gives $\text{NPV} = 0.0$ ($< 10^{-6}\text{ AUD}$).
+  2. `sanityCheckInputs` flags 35/5 tariffs and passes 0.35/0.05 tariffs.
+  3. Automated golden comparison against `battery_model.py` agreeing within $10^{-6}\text{ kWh}$ and $10^{-4}\text{ AUD}$.
+  4. Confirmed feed-in tariff of $0.00/kWh gives strictly higher NPV than $0.10/kWh for the same battery pack.
+
+---
+
 ## Test Verification Summary
-- Total test files: 5 (`goldenComparison.test.ts`, `model.test.ts`, `economics.test.ts`, `inputsAndTariffs.test.ts`, `dispatch.test.ts`).
-- Total passing tests: 26 / 26 passed (0 failures).
-- Golden comparison difference vs `battery_model.py`: $< 10^{-10}\text{ kWh}$ and $< 10^{-11}\text{ AUD}$.
+- Total test files: 6 (`diagnosis.test.ts`, `goldenComparison.test.ts`, `model.test.ts`, `economics.test.ts`, `inputsAndTariffs.test.ts`, `dispatch.test.ts`).
+- Total passing tests: 30 / 30 passed (0 failures).
+- Golden comparison difference vs `battery_model.py`: $< 10^{-10}\text{ kWh}$ and $< 10^{-10}\text{ AUD}$.
 - Production build: `tsc -b && vite build` succeeds with zero errors.
